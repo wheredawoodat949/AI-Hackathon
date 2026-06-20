@@ -1,0 +1,31 @@
+# Python 3.11+. Install in a venv:  python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+# Versions pinned with lower bounds; lock exact versions on the GPU box once verified.
+
+# --- Phase 0: foundation (data + config + GPU check) ---
+huggingface_hub>=0.24    # canonical (gated) source
+gdown>=5.0               # Google Drive mirror fallback (no HF gating)
+python-dotenv>=1.0
+PyYAML>=6.0
+numpy>=1.26
+# Install the CUDA build of torch on the GPU box per https://pytorch.org/get-started/locally/
+torch>=2.2
+
+# --- Phase 1-2: tracking, video, pitch, minimap ---
+opencv-python>=4.9
+pillow>=10.0
+scipy>=1.11
+# requests used by the hosted-SAM (api) backend
+requests>=2.31
+
+# --- Phase 2: eval (uses the SoccerTrack-v2 package's HOTA — do NOT reimplement) ---
+# On the GPU box, also have the dataset repo importable:
+#   pip install git+https://github.com/AtomScott/SoccerTrack-v2
+# so `python -m src.evaluation.gs_hota ...` is available for HOTA/MOT/BAS scoring.
+
+# --- Phase 3: sponsors (optional; only needed when toggled on in config.yaml) ---
+sentry-sdk>=2.0
+arize>=7.0
+redis>=5.0
+
+# --- Dev / notebook ---
+jupyterlab>=4.0

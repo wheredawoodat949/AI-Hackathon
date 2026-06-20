@@ -1,0 +1,47 @@
+# --- Secrets ---
+.env
+
+# --- Dataset & large artifacts (never commit) ---
+# Anchored to repo root with a leading slash so they DON'T match src/data/ etc.
+/data/
+/outputs/
+/weights/
+*.mp4
+*.avi
+*.mov
+*.pt
+*.pth
+*.npy
+*.ckpt
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+.venv*/
+venv/
+env/
+.python-version
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+notebooks/**/*.nbconvert.ipynb
+
+# --- HF / model caches ---
+.cache/
+hf_cache/
+
+# --- Tooling / OS ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+.idea/
+.vscode/
+
+# --- Local reference clone of the dataset repo (do not vendor) ---
+_reference_soccertrack/
