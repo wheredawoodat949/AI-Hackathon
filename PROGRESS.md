@@ -46,6 +46,20 @@ each with gsr+bas+raw+videos). **No `mot/` in the mirror** → use GSR HOTA (`gs
 - FPS 25. GSR fields: track_id, role, jersey_number, team_side, x, y (+ player_id, bboxes).
 - Attribution required: dataset is CC BY 4.0.
 
+## Phase 0.5 — Rapid-dev scaffolding  ✅ (verified: ruff clean, 11/11 pytest green)
+- [x] `pyproject.toml` — `pip install -e ".[dev]"`; ruff + pytest config. `Makefile` for common commands.
+- [x] **SAM 3.1 abstraction** (`src/model/`): `SamBackend` Protocol + `Detection`/`FrameResult`/`TrackResult`,
+      `get_backend()` factory (local|api), `sam_local.py` + `sam_api.py` impls (heavy imports deferred, `track()` stubbed).
+- [x] Per-role stub modules with `TODO(Role X)` + real signatures: `tracking/tracker.py`, `pitch/homography.py`,
+      `pitch/minimap.py`, `eval/hota.py` (shells to dataset `gs_hota`), `obs/sentry.py`, `obs/arize.py`,
+      `store/redis_store.py`, `events/bas.py`. `pipeline.run()` wires the stages.
+- [x] `tests/` — import-smoke (every module imports with no heavy deps), config/split invariants, loader, gpu.
+- [x] 4 role branches pushed: `feat/tracking-ashmeet`, `feat/pitch-eval-shaaz`, `feat/sponsors-vincent`, `feat/events-demo-dawood`.
+- [x] `docs/COMPUTE.md` — GPU/training options (team box, sponsor cloud, Colab/Kaggle; NERSC/JGI off-policy; Anupurna unverified).
+
+**Guard rail:** heavy/optional imports (torch, cv2, sentry, arize, redis, requests) stay deferred inside
+functions so `make test` stays green on any machine. Don't add them at module top level.
+
 ## Phase 1+ — not started
-See CLAUDE.md §8 and the branch plan in the kickoff. Phase 1 = SAM 3.1 backend abstraction + one
-working impl + annotated clip (Role A, `feat/tracking`).
+Phase 1 = SAM 3.1 backend impl + annotated clip (Role A, `feat/tracking-ashmeet`). The interface is
+ready in `src/model/`; fill in `SamLocalBackend.track()` or `SamApiBackend.track()`.
