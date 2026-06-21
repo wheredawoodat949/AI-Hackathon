@@ -19,7 +19,7 @@ referring expressions, and inference cost scales ~linearly with tracked objects.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterator, Protocol, Sequence, runtime_checkable
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Protocol, Sequence, runtime_checkable
 
 if TYPE_CHECKING:  # heavy/optional types only for static checkers, never at runtime
     import numpy as np
@@ -39,6 +39,19 @@ class Detection:
     mask: "np.ndarray | Any | None" = None
     score: float | None = None
 
+    @property
+    def foot_xy(self) -> tuple[float, float]:
+        """Bottom-middle of the bbox in pixels — the point Phase 2 projects
+        through the homography to get on-pitch (x, y) in meters. Matches how
+        SoccerTrack v2 GSR ground truth stores positions (bbox_pitch bottom-middle)."""
+        x, y, w, h = self.bbox
+        return (x + w / 2.0, y + h)
+
+    @property
+    def center_xy(self) -> tuple[float, float]:
+        x, y, w, h = self.bbox
+        return (x + w / 2.0, y + h / 2.0)
+
 
 @dataclass(frozen=True)
 class FrameResult:
@@ -46,6 +59,11 @@ class FrameResult:
 
     frame_index: int
     detections: tuple[Detection, ...] = field(default_factory=tuple)
+    width: Optional[int] = None   # source frame width (px), if the backend knows it
+    height: Optional[int] = None  # source frame height (px), if the backend knows it
+
+    def of_label(self, label: str) -> tuple[Detection, ...]:
+        return tuple(d for d in self.detections if d.label == label)
 
 
 # A TrackResult is just an iterator of per-frame results — lets backends stream

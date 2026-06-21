@@ -3,6 +3,16 @@
 Running status of what works, what's stubbed, and the current demo command.
 Update at the end of every phase (CLAUDE.md §7).
 
+## Repo health check (2026-06-20)
+`git fsck --full --strict` clean on both this repo and the `_reference_soccertrack` clone; no
+files >5MB ever committed; `.gitignore` correctly excludes `data/`, `outputs/`, `.venv/`,
+`__pycache__/`. **One real issue found and fixed:** `feat/sponsors-vincent`'s merge commit
+(`c98204c`) had left literal unresolved `<<<<<<<`/`=======`/`>>>>>>>` conflict markers committed
+into `src/model/{__init__,sam_api,sam_backend,sam_local}.py` (invalid Python — broke every import
+in that package). Vincent independently fixed it (`9b084c2`) before a parallel fix landed here;
+verified clean (no markers anywhere across all 5 refs, his resolution lints + tests green). All
+branches now import-clean.
+
 ## Current demo command (Drive mirror — no auth needed)
 ```bash
 python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
@@ -68,21 +78,30 @@ functions so `make test` stays green on any machine. Don't add them at module to
 - [x] `src/tracking/demo.py` — `python -m src.tracking.demo` renders an annotated clip to `outputs/`.
 - [x] **VERIFIED on Mac (no GPU):** produced `outputs/track_117093_replay.mp4` — 100 frames, 960x376,
       25 fps; 20 players (green) + 2 keepers (orange) with persistent IDs. Tests: 14/14 green, ruff clean.
-- [x] **`sam_api.py` implemented against fal.ai** (`fal-ai/sam-3-1/video`) — real SAM 3.1, no GPU
-      needed, ~$0.16/10s clip. Uploads clip, sends our prompts, downloads the real annotated video to
-      `outputs/`. **NOT yet live-tested** (no FAL_KEY in hand) — credential-check + plumbing verified
-      (16/16 tests incl. `test_sam_api_backend_requires_fal_key`), network path needs a real key to confirm.
-- [ ] **Next:** get a `FAL_KEY` (fal.ai signup), add to `.env`, set `sam.backend: api`, run
-      `python -m src.tracking.demo --backend api --video <real clip>` and confirm what fal actually
-      returns — tighten `_frame_results_from_fal()` in `sam_api.py` if structured per-frame boxes are
-      present (currently best-effort/defensive; the masked video alone is a valid fallback demo asset).
-      `sam_local.py` stays stubbed (no viable local GPU — see below).
+- [x] **`sam_local.py` implemented for real** via 🤗 Transformers `Sam3VideoModel`/`Sam3VideoProcessor`
+      (the official distribution path per the live model card at huggingface.co/facebook/sam3 —
+      weights auto-download via `from_pretrained()` once access is approved, no manual file
+      placement). Runs one full video pass per prompt (PCS finds all instances of ONE concept per
+      call; no documented multi-concept syntax) and merges per-frame results, offsetting instance
+      IDs so prompts never collide. Adapted to our `Detection(bbox=(x,y,w,h))`/`FrameResult` shapes
+      incl. new `foot_xy`/`center_xy` helpers on `Detection` and `of_label()`/`width`/`height` on
+      `FrameResult` (additive, backward compatible). Targets the Colab T4 GPU (fp16, not the model
+      card's default bf16 — T4 is pre-Ampere). **NOT yet live-tested** (access request submitted,
+      awaiting Meta's review as of 2026-06-21) — error paths are unit-tested (18/18 tests), the
+      actual inference call needs a live run + approved access to confirm.
+- [x] **`notebooks/colab_sam_tracking.ipynb`** — full Colab bring-up: GPU check, clone+install,
+      gated SAM3 weight request/download (flags the real risk: access can be denied/delayed),
+      download a real clip, run `--backend local`, preview the output. **Next action: open it in
+      Colab, select the T4 runtime, and run it for real.**
+- [x] **`sam_api.py` (fal.ai) implemented and verified-real but DEFERRED** in favor of Colab — see
+      [docs/DEFERRED.md](docs/DEFERRED.md) for when/how to pick it back up (e.g. if Colab's gated
+      weights access stalls). Credential-check path tested; network path still needs a real FAL_KEY.
 
 **GPU access — CONFIRMED (Slack + live.hackberkeley.org, 2026-06-20):** hackathon provides none;
 RunPod isn't even on the official sponsor-resource list (Slack-only, booth visit needed, not
 guaranteed); Annapurna Labs is a prize showcase, not GPU credits (and uses AWS Neuron, not CUDA,
-anyway); our only team GPU (K1900, ~2GB) is below SAM 3.1's ~4GB floor. **Decision: fal.ai hosted
-API is primary** (see `sam.backend: api` above); `replay` remains the zero-cost fallback. Full
+anyway); our only team GPU (K1900, ~2GB) is below SAM 3.1's ~4GB floor. **Current plan: Google
+Colab's free T4** (`sam.backend: local`); fal.ai stays as a documented, ready fallback. Full
 writeup: [docs/COMPUTE.md](docs/COMPUTE.md). ML extensions + QLoRA verdict (skip QLoRA):
 [docs/ML_DIRECTIONS.md](docs/ML_DIRECTIONS.md).
 
