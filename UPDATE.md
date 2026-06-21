@@ -243,3 +243,37 @@ downloaded output, then manually review/annotate any frames intended for Phase 3
 **Blocked on / open questions:** Live validation needs `PIKA_API_KEY` and direct Developer API
 access. Phase 3 still needs a GPU and `ROBOFLOW_API_KEY`. Phase 6–8 scope still needs user
 confirmation.
+
+---
+
+## 2026-06-21 — basketball — Phase 4 sponsor runtime wiring (Codex)
+
+**What changed:** Added a dependency-light tracking observer that fans real basketball detections
+out to the Redis and Arize adapters. All four Path-A modes now log actual model confidence;
+tracked modes also publish ByteTrack foot positions, team assignments when available, agent
+counts, and frame-to-frame track-set churn. The Colab install now makes the root package
+importable, and direct script execution resolves both vendored package roots.
+
+**Metric correction:** Path A has no identity ground truth, so a true ID-swap rate cannot be
+measured honestly. The runtime records exact new/lost track counts and their observed churn rate,
+tagged as `track_churn_rate`. Arize still accepts a separately computed `id_swap_rate` when a
+future evaluator supplies one, but the two metrics are not conflated.
+
+**Current state / what works:** Sponsor-off behavior remains a no-op and all basketball CLI modes
+still load. Observer fan-out and metric labeling are tested with no external services. Complete
+suite: 34 passed, 2 data-dependent skips; Ruff, Python compilation, notebook JSON validation, and
+`main.py --help` are clean. No hosted Redis/Arize success is claimed without credentials.
+
+**How to run it:** Use the existing basketball command. To enable integrations, set the desired
+`sponsors.redis`/`sponsors.arize` flags in `config.yaml`, populate the matching root `.env`
+credentials, and install the optional clients as documented in
+`sports/examples/basketball/README.md`.
+
+**Next step:** Validate one short real clip against hosted Redis and Arize, then inspect the exact
+stored stream/telemetry records. Vincent's newly pushed possession and movement-trail modules were
+also reviewed from `sam_model_vincent`; they are useful inputs for the next basketball analytics
+task but were not copied blindly into this sponsor-wiring commit.
+
+**Blocked on / open questions:** Hosted checks need `REDIS_URL`,
+`ARIZE_API_KEY`/`ARIZE_SPACE_ID`. Phase 3 still needs GPU + `ROBOFLOW_API_KEY`. Phase 6–8
+scope remains unconfirmed.

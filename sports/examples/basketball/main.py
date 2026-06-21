@@ -25,18 +25,30 @@ Usage (mirrors the soccer script):
 
 Modes: PLAYER_DETECTION, BALL_DETECTION, PLAYER_TRACKING, TEAM_CLASSIFICATION.
 """
+# Direct script execution needs both repository package roots before first-party imports.
+# ruff: noqa: E402
 import argparse
 import os
+import sys
 from enum import Enum
+from pathlib import Path
 from typing import Iterator, List
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+for package_root in (REPO_ROOT, REPO_ROOT / "sports"):
+    package_path = str(package_root)
+    if package_path not in sys.path:
+        sys.path.insert(0, package_path)
 
 import numpy as np
 import supervision as sv
+from sports.common.ball import BallAnnotator, BallTracker
+from sports.common.team import TeamClassifier
 from tqdm import tqdm
 from ultralytics import YOLO
 
-from sports.common.ball import BallAnnotator, BallTracker
-from sports.common.team import TeamClassifier
+from src.config import load_config
+from src.integrations.tracking_observer import ObservedDetection, TrackingObserver
 
 # Generic COCO-pretrained weights — ungated, auto-downloads. Override with a
 # basketball-specific checkpoint here later (Phase 3) without touching the rest
@@ -77,16 +89,58 @@ def get_crops(frame: np.ndarray, detections: sv.Detections) -> List[np.ndarray]:
     return [sv.crop_image(frame, xyxy) for xyxy in detections.xyxy]
 
 
+def to_observations(
+    detections: sv.Detections,
+    class_name: str,
+    *,
+    team_ids: np.ndarray | None = None,
+) -> list[ObservedDetection]:
+    """Translate Supervision detections without inventing missing confidence."""
+    if detections.confidence is None:
+        return []
+    tracker_ids = detections.tracker_id
+    anchors = (
+        detections.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+        if tracker_ids is not None
+        else None
+    )
+    result = []
+    for index, confidence in enumerate(detections.confidence):
+        track_id = int(tracker_ids[index]) if tracker_ids is not None else None
+        x = float(anchors[index][0]) if anchors is not None else None
+        y = float(anchors[index][1]) if anchors is not None else None
+        team = int(team_ids[index]) if team_ids is not None else None
+        result.append(ObservedDetection(
+            class_name=class_name,
+            confidence=float(confidence),
+            track_id=track_id,
+            x=x,
+            y=y,
+            team=team,
+        ))
+    return result
+
+
+def tracking_observer(source_video_path: str) -> TrackingObserver:
+    """Build the Redis/Arize fan-out; both remain no-ops unless enabled."""
+    return TrackingObserver.for_video(load_config(), source_video_path, sport="basketball")
+
+
 def run_player_detection(source_video_path: str, device: str) -> Iterator[np.ndarray]:
     model = YOLO(DETECTION_MODEL_PATH).to(device=device)
     frame_generator = sv.get_video_frames_generator(source_path=source_video_path)
-    for frame in frame_generator:
-        result = model(frame, classes=[PERSON_CLASS_ID], verbose=False)[0]
-        detections = sv.Detections.from_ultralytics(result)
-        annotated_frame = frame.copy()
-        annotated_frame = BOX_ANNOTATOR.annotate(annotated_frame, detections)
-        annotated_frame = BOX_LABEL_ANNOTATOR.annotate(annotated_frame, detections)
-        yield annotated_frame
+    observer = tracking_observer(source_video_path)
+    try:
+        for frame_index, frame in enumerate(frame_generator):
+            result = model(frame, classes=[PERSON_CLASS_ID], verbose=False)[0]
+            detections = sv.Detections.from_ultralytics(result)
+            observer.observe_frame(frame_index, to_observations(detections, "person"))
+            annotated_frame = frame.copy()
+            annotated_frame = BOX_ANNOTATOR.annotate(annotated_frame, detections)
+            annotated_frame = BOX_LABEL_ANNOTATOR.annotate(annotated_frame, detections)
+            yield annotated_frame
+    finally:
+        observer.close()
 
 
 def run_ball_detection(source_video_path: str, device: str) -> Iterator[np.ndarray]:
@@ -94,28 +148,39 @@ def run_ball_detection(source_video_path: str, device: str) -> Iterator[np.ndarr
     frame_generator = sv.get_video_frames_generator(source_path=source_video_path)
     ball_tracker = BallTracker(buffer_size=20)
     ball_annotator = BallAnnotator(radius=6, buffer_size=10)
-    for frame in frame_generator:
-        result = model(frame, classes=[BALL_CLASS_ID], verbose=False)[0]
-        detections = sv.Detections.from_ultralytics(result)
-        detections = ball_tracker.update(detections)
-        annotated_frame = frame.copy()
-        annotated_frame = ball_annotator.annotate(annotated_frame, detections)
-        yield annotated_frame
+    observer = tracking_observer(source_video_path)
+    try:
+        for frame_index, frame in enumerate(frame_generator):
+            result = model(frame, classes=[BALL_CLASS_ID], verbose=False)[0]
+            detections = sv.Detections.from_ultralytics(result)
+            detections = ball_tracker.update(detections)
+            observer.observe_frame(frame_index, to_observations(detections, "sports ball"))
+            annotated_frame = frame.copy()
+            annotated_frame = ball_annotator.annotate(annotated_frame, detections)
+            yield annotated_frame
+    finally:
+        observer.close()
 
 
 def run_player_tracking(source_video_path: str, device: str) -> Iterator[np.ndarray]:
     model = YOLO(DETECTION_MODEL_PATH).to(device=device)
     frame_generator = sv.get_video_frames_generator(source_path=source_video_path)
     tracker = sv.ByteTrack(minimum_consecutive_frames=3)
-    for frame in frame_generator:
-        result = model(frame, classes=[PERSON_CLASS_ID], verbose=False)[0]
-        detections = sv.Detections.from_ultralytics(result)
-        detections = tracker.update_with_detections(detections)
-        labels = [str(tracker_id) for tracker_id in detections.tracker_id]
-        annotated_frame = frame.copy()
-        annotated_frame = ELLIPSE_ANNOTATOR.annotate(annotated_frame, detections)
-        annotated_frame = ELLIPSE_LABEL_ANNOTATOR.annotate(annotated_frame, detections, labels=labels)
-        yield annotated_frame
+    observer = tracking_observer(source_video_path)
+    try:
+        for frame_index, frame in enumerate(frame_generator):
+            result = model(frame, classes=[PERSON_CLASS_ID], verbose=False)[0]
+            detections = sv.Detections.from_ultralytics(result)
+            detections = tracker.update_with_detections(detections)
+            observer.observe_frame(frame_index, to_observations(detections, "person"))
+            labels = [str(tracker_id) for tracker_id in detections.tracker_id]
+            annotated_frame = frame.copy()
+            annotated_frame = ELLIPSE_ANNOTATOR.annotate(annotated_frame, detections)
+            annotated_frame = ELLIPSE_LABEL_ANNOTATOR.annotate(
+                annotated_frame, detections, labels=labels)
+            yield annotated_frame
+    finally:
+        observer.close()
 
 
 def run_team_classification(source_video_path: str, device: str) -> Iterator[np.ndarray]:
@@ -137,26 +202,39 @@ def run_team_classification(source_video_path: str, device: str) -> Iterator[np.
     tracker = sv.ByteTrack(minimum_consecutive_frames=3)
     ball_tracker = BallTracker(buffer_size=20)
     ball_annotator = BallAnnotator(radius=6, buffer_size=10)
-    for frame in frame_generator:
-        result = model(frame, classes=[PERSON_CLASS_ID, BALL_CLASS_ID], verbose=False)[0]
-        detections = sv.Detections.from_ultralytics(result)
+    observer = tracking_observer(source_video_path)
+    try:
+        for frame_index, frame in enumerate(frame_generator):
+            result = model(frame, classes=[PERSON_CLASS_ID, BALL_CLASS_ID], verbose=False)[0]
+            detections = sv.Detections.from_ultralytics(result)
 
-        players = detections[detections.class_id == PERSON_CLASS_ID]
-        players = tracker.update_with_detections(players)
-        player_crops = get_crops(frame, players)
-        color_lookup = team_classifier.predict(player_crops) if player_crops else np.array([])
+            players = detections[detections.class_id == PERSON_CLASS_ID]
+            players = tracker.update_with_detections(players)
+            player_crops = get_crops(frame, players)
+            color_lookup = (
+                team_classifier.predict(player_crops)
+                if player_crops
+                else np.array([], dtype=int)
+            )
 
-        ball = detections[detections.class_id == BALL_CLASS_ID]
-        ball = ball_tracker.update(ball)
+            ball = detections[detections.class_id == BALL_CLASS_ID]
+            ball = ball_tracker.update(ball)
 
-        labels = [str(tracker_id) for tracker_id in players.tracker_id]
-        annotated_frame = frame.copy()
-        annotated_frame = ELLIPSE_ANNOTATOR.annotate(
-            annotated_frame, players, custom_color_lookup=color_lookup)
-        annotated_frame = ELLIPSE_LABEL_ANNOTATOR.annotate(
-            annotated_frame, players, labels, custom_color_lookup=color_lookup)
-        annotated_frame = ball_annotator.annotate(annotated_frame, ball)
-        yield annotated_frame
+            observations = to_observations(
+                players, "person", team_ids=color_lookup
+            ) + to_observations(ball, "sports ball")
+            observer.observe_frame(frame_index, observations)
+
+            labels = [str(tracker_id) for tracker_id in players.tracker_id]
+            annotated_frame = frame.copy()
+            annotated_frame = ELLIPSE_ANNOTATOR.annotate(
+                annotated_frame, players, custom_color_lookup=color_lookup)
+            annotated_frame = ELLIPSE_LABEL_ANNOTATOR.annotate(
+                annotated_frame, players, labels, custom_color_lookup=color_lookup)
+            annotated_frame = ball_annotator.annotate(annotated_frame, ball)
+            yield annotated_frame
+    finally:
+        observer.close()
 
 
 def main(source_video_path: str, target_video_path: str, device: str, mode: Mode) -> None:
