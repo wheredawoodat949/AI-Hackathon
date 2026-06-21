@@ -2,8 +2,9 @@
 
 Uses the Arize Python SDK v8 streaming API. Detection records are logged as
 score-categorical predictions (label + confidence); one regression record per
-frame carries ID-swap rate plus count/confidence features. The integration is a
-safe no-op unless enabled and credentialed.
+frame carries a measured stability value plus count/confidence features. Callers
+may supply a true ID-swap rate when identity ground truth exists. The basketball
+runtime instead supplies observed track-set churn and labels it accordingly.
 """
 from __future__ import annotations
 
@@ -58,7 +59,10 @@ class FrameTelemetry:
     tracked_agent_count: int
     detection_count: int
     mean_confidence: float
-    id_swap_rate: float
+    id_swap_rate: float | None = None
+    track_churn_rate: float | None = None
+    new_track_count: int = 0
+    lost_track_count: int = 0
     sport: str = "basketball"
     clip_id: str = "unknown"
     timestamp: int = 0
@@ -69,8 +73,16 @@ class FrameTelemetry:
             raise ValueError("counts must be non-negative")
         if not math.isfinite(self.mean_confidence) or not 0.0 <= self.mean_confidence <= 1.0:
             raise ValueError("mean_confidence must be between 0 and 1")
-        if not math.isfinite(self.id_swap_rate) or self.id_swap_rate < 0:
-            raise ValueError("id_swap_rate must be finite and non-negative")
+        if self.new_track_count < 0 or self.lost_track_count < 0:
+            raise ValueError("track counts must be non-negative")
+        if self.id_swap_rate is None and self.track_churn_rate is None:
+            raise ValueError("one tracker-health metric is required")
+        for name, value in (
+            ("id_swap_rate", self.id_swap_rate),
+            ("track_churn_rate", self.track_churn_rate),
+        ):
+            if value is not None and (not math.isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be finite and non-negative")
 
 
 def init(cfg: Any) -> bool:
@@ -150,6 +162,23 @@ def log_frame(record: FrameTelemetry | Mapping[str, Any]) -> bool:
     try:
         from arize.ml.types import Environments, ModelTypes
 
+        metric_name, metric_value = (
+            ("id_swap_rate", telemetry.id_swap_rate)
+            if telemetry.id_swap_rate is not None
+            else ("track_churn_rate", telemetry.track_churn_rate)
+        )
+        features = {
+            "frame_index": int(telemetry.frame_index),
+            "tracked_agent_count": int(telemetry.tracked_agent_count),
+            "detection_count": int(telemetry.detection_count),
+            "mean_confidence": float(telemetry.mean_confidence),
+            "new_track_count": int(telemetry.new_track_count),
+            "lost_track_count": int(telemetry.lost_track_count),
+        }
+        if telemetry.id_swap_rate is not None:
+            features["id_swap_rate"] = float(telemetry.id_swap_rate)
+        if telemetry.track_churn_rate is not None:
+            features["track_churn_rate"] = float(telemetry.track_churn_rate)
         future = _client.log_stream(
             space_id=_space_id,
             model_name=_health_model,
@@ -158,14 +187,9 @@ def log_frame(record: FrameTelemetry | Mapping[str, Any]) -> bool:
             model_version=_model_version,
             prediction_id=telemetry.prediction_id,
             prediction_timestamp=_timestamp(telemetry.timestamp),
-            prediction_label=float(telemetry.id_swap_rate),
-            features={
-                "frame_index": int(telemetry.frame_index),
-                "tracked_agent_count": int(telemetry.tracked_agent_count),
-                "detection_count": int(telemetry.detection_count),
-                "mean_confidence": float(telemetry.mean_confidence),
-            },
-            tags=_tags(telemetry),
+            prediction_label=float(metric_value),
+            features=features,
+            tags={**_tags(telemetry), "health_metric": metric_name},
         )
         _track_future(future)
         return True

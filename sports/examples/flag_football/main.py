@@ -1,4 +1,4 @@
-"""Basketball player + ball tracking — Phase 1 (Path A), CLAUDE.md §4/§7/§8.
+"""Flag football player + ball tracking — Path A (generic COCO detector + ByteTrack).
 
 Adapted from sports/examples/soccer/main.py, simplified for basketball:
 
@@ -58,7 +58,7 @@ from src.integrations.tracking_observer import ObservedDetection, TrackingObserv
 # Generic COCO-pretrained weights — ungated, auto-downloads. Override with a
 # basketball-specific checkpoint here later (Phase 3) without touching the rest
 # of this file: just point DETECTION_MODEL_PATH elsewhere.
-DETECTION_MODEL_PATH = os.environ.get("BASKETBALL_DETECTION_MODEL", "yolo11n.pt")
+DETECTION_MODEL_PATH = os.environ.get("FLAG_FOOTBALL_DETECTION_MODEL", "yolo11n.pt")
 
 
 def parse_class_ids(name: str, default: str) -> tuple[int, ...]:
@@ -72,8 +72,8 @@ def parse_class_ids(name: str, default: str) -> tuple[int, ...]:
     return values
 
 
-PERSON_CLASS_IDS = parse_class_ids("BASKETBALL_PERSON_CLASS_IDS", "0")  # COCO person
-BALL_CLASS_IDS = parse_class_ids("BASKETBALL_BALL_CLASS_IDS", "32")  # COCO sports ball
+PERSON_CLASS_IDS = parse_class_ids("FLAG_FOOTBALL_PERSON_CLASS_IDS", "0")  # COCO person
+BALL_CLASS_IDS = parse_class_ids("FLAG_FOOTBALL_BALL_CLASS_IDS", "32")  # COCO sports ball
 DETECTION_CLASS_IDS = tuple(dict.fromkeys(PERSON_CLASS_IDS + BALL_CLASS_IDS))
 
 COLORS = ['#FF1493', '#00BFFF', '#FFD700']  # team 0, team 1, unresolved
@@ -145,7 +145,7 @@ def to_observations(
 
 def tracking_observer(source_video_path: str) -> TrackingObserver:
     """Build the Redis/Arize fan-out; both remain no-ops unless enabled."""
-    return TrackingObserver.for_video(load_config(), source_video_path, sport="basketball")
+    return TrackingObserver.for_video(load_config(), source_video_path, sport="flag_football")
 
 
 def draw_possession_hud(
@@ -406,7 +406,7 @@ def main(source_video_path: str, target_video_path: str, device: str, mode: Mode
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Basketball player + ball tracking (Path A).')
+    parser = argparse.ArgumentParser(description='Flag football player + ball tracking (Path A).')
     parser.add_argument('--source_video_path', type=str, required=True)
     parser.add_argument('--target_video_path', type=str, required=True)
     parser.add_argument('--device', type=str, default='cpu')

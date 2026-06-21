@@ -86,7 +86,29 @@ def test_detection_and_frame_records_use_current_stream_api(monkeypatch):
     assert health["model_type"] == ModelTypes.REGRESSION
     assert health["prediction_label"] == 0.02
     assert health["features"]["detection_count"] == 11
+    assert health["tags"]["health_metric"] == "id_swap_rate"
     assert arize.flush() == (2, 0)
+
+
+def test_track_churn_is_not_mislabeled_as_id_swap(monkeypatch):
+    fake = FakeMLClient()
+    monkeypatch.setattr(arize, "_client", fake)
+    monkeypatch.setattr(arize, "_space_id", "space-1")
+    assert arize.log_frame(arize.FrameTelemetry(
+        prediction_id="clip:2:health",
+        frame_index=2,
+        tracked_agent_count=3,
+        detection_count=3,
+        mean_confidence=0.7,
+        track_churn_rate=0.25,
+        new_track_count=1,
+        lost_track_count=0,
+    ))
+    call = fake.calls[0]
+    assert call["prediction_label"] == 0.25
+    assert call["tags"]["health_metric"] == "track_churn_rate"
+    assert call["features"]["track_churn_rate"] == 0.25
+    assert "id_swap_rate" not in call["features"]
 
 
 def test_invalid_confidence_is_rejected():
