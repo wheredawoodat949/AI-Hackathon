@@ -21,8 +21,13 @@ requests>=2.31
 fal-client>=0.5
 # transformers + accelerate: self-hosted SAM 3.1 (sam.backend: local), e.g. on a
 # Colab T4. Gated weights (facebook/sam3) auto-download via from_pretrained()
-# once HF access is approved + authenticated. On Colab: pip install -U transformers
-# accelerate (unpinned — SAM3 support needs a very recent transformers release).
+# once HF access is approved + authenticated.
+# IMPORTANT: SAM3 is NOT in any stable transformers release yet (merged to main
+# 2025-11-19). The stable wheel is MISSING Sam3ImageProcessor -> "Can't load image
+# processor". Install from git main:
+#   pip install -U "git+https://github.com/huggingface/transformers"
+# (left unpinned here so a normal `pip install -r` doesn't force a slow git build for
+# people not using the local backend; the Colab notebook installs main explicitly.)
 transformers
 accelerate
 

@@ -71,7 +71,9 @@ class SamLocalBackend:
         except ImportError as exc:  # pragma: no cover
             raise ImportError(
                 "transformers (with SAM3 support) + accelerate are required for the\n"
-                "local SAM 3 backend.  pip install -U transformers accelerate"
+                "local SAM 3 backend. SAM3 is NOT in stable transformers yet — install main:\n"
+                "  pip install -U 'git+https://github.com/huggingface/transformers' accelerate\n"
+                "(then RESTART the runtime if on Colab/Jupyter)."
             ) from exc
 
         # T4 (Colab free tier, compute capability 7.5) doesn't support bfloat16 well —
@@ -80,14 +82,19 @@ class SamLocalBackend:
         try:
             self._model = Sam3VideoModel.from_pretrained(self.repo_id).to(self.device, dtype=self._dtype)
             self._processor = Sam3VideoProcessor.from_pretrained(self.repo_id)
-        except Exception as exc:  # noqa: BLE001 - surface the gating/auth hint, then re-raise
-            raise RuntimeError(
-                f"Could not load {self.repo_id} from Hugging Face.\n"
-                "  1. Request access: https://huggingface.co/facebook/sam3\n"
-                "     (can be denied/delayed — check https://huggingface.co/settings/gated-repos)\n"
+        except Exception as exc:  # noqa: BLE001 - surface the most likely cause, then re-raise
+            hint = (
+                "  -> 'Can't load image processor': your transformers is too OLD (the stable\n"
+                "     wheel lacks Sam3ImageProcessor). Install main + RESTART runtime:\n"
+                "       pip install -U 'git+https://github.com/huggingface/transformers'\n"
+                if "image processor" in str(exc).lower()
+                else "  1. Request access: https://huggingface.co/facebook/sam3 (can be denied/delayed)\n"
                 "  2. Authenticate: huggingface_hub.login(token=...) or set HF_TOKEN.\n"
-                "If access doesn't come through in time, see docs/DEFERRED.md (fal.ai)\n"
-                "or use sam.backend: replay.\n"
+            )
+            raise RuntimeError(
+                f"Could not load {self.repo_id} from Hugging Face.\n{hint}"
+                "If this can't be resolved in time, see docs/DEFERRED.md (fal.ai) or use\n"
+                "sam.backend: replay.\n"
                 f"--- original error ---\n{exc}"
             ) from exc
 
