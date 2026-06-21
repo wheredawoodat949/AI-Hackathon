@@ -277,3 +277,37 @@ task but were not copied blindly into this sponsor-wiring commit.
 **Blocked on / open questions:** Hosted checks need `REDIS_URL`,
 `ARIZE_API_KEY`/`ARIZE_SPACE_ID`. Phase 3 still needs GPU + `ROBOFLOW_API_KEY`. Phase 6–8
 scope remains unconfirmed.
+
+---
+
+## 2026-06-21 — basketball — Possession + movement-trail demo mode (Codex)
+
+**What changed:** Reviewed Vincent's latest `sam_model_vincent` commits after fetching them.
+Ported the two sport-agnostic primitives from `c76c85d` (possession hysteresis and fading
+movement trails) with attribution, validation, and tests. Added a basketball `POSSESSION` mode
+that reuses the existing team-classification pass, overlays player trails, marks the estimated
+holder, and draws an `EST. POSSESSION` HUD. Added a Colab run/preview cell for the enhanced
+artifact.
+
+**Scope correction:** Vincent's soccer implementation can measure distances after pitch
+homography. Basketball currently has no court keypoint/homography model, so this adaptation uses
+an explicitly documented 80-pixel radius and 20-pixel switch margin with temporal hysteresis.
+The result is a demo heuristic, not ground truth, an evaluation metric, or a physical-distance
+claim.
+
+**Current state / what works:** Possession continuity/switching and trail draw/prune behavior are
+covered by dependency-light tests. Complete suite: 38 passed, 2 data-dependent skips. Ruff,
+Python compilation, notebook JSON, and CLI loading are clean. The real `POSSESSION` video has
+not been rendered locally because this environment has no GPU or basketball clip/model artifact.
+
+**How to run it:** In `Basketball_1.ipynb`, run through the team-classifier setup and then the
+new enhanced-demo cells. CLI equivalent:
+`python main.py --source_video_path <clip> --target_video_path <out> --device cuda --mode POSSESSION`.
+
+**Next step:** Run the new mode on a diverse real Basketball-51 clip, verify the generic COCO ball
+detection is sufficiently continuous for a useful HUD, and tune the documented pixel radius only
+from observed output. Record actual results rather than assuming quality.
+
+**Blocked on / open questions:** Real visual validation needs the user's Colab GPU + clip.
+Phase 3 still needs `ROBOFLOW_API_KEY` and GPU compute. Hosted sponsor checks still need their
+credentials. Phase 6–8 scope remains unconfirmed.

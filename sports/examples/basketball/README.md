@@ -18,7 +18,15 @@ python main.py \
   --mode TEAM_CLASSIFICATION
 ```
 
-Modes: `PLAYER_DETECTION`, `BALL_DETECTION`, `PLAYER_TRACKING`, `TEAM_CLASSIFICATION`.
+Modes: `PLAYER_DETECTION`, `BALL_DETECTION`, `PLAYER_TRACKING`, `TEAM_CLASSIFICATION`,
+`POSSESSION`.
+
+`POSSESSION` reuses the same detection/tracking/team pass and adds movement trails, an estimated
+holder marker, and a two-team possession HUD. Vincent's shared soccer possession/trail work from
+`sam_model_vincent` commit `c76c85d` is the basis for these shared primitives. Basketball has
+no court homography yet, so holder selection uses an 80-pixel player-to-ball radius with temporal
+hysteresis. The HUD is explicitly labeled `EST. POSSESSION`; it is a demo heuristic, not an
+evaluation metric or ground truth.
 
 ## Verified (2026-06-21, CPU, synthetic test clip)
 - `PLAYER_DETECTION` / `PLAYER_TRACKING` / `BALL_DETECTION`: run end-to-end, produce a valid

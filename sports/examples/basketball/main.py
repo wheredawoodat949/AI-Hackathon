@@ -23,7 +23,9 @@ Usage (mirrors the soccer script):
     python main.py --source_video_path clip.mp4 --target_video_path out.mp4 \
         --device cuda --mode TEAM_CLASSIFICATION
 
-Modes: PLAYER_DETECTION, BALL_DETECTION, PLAYER_TRACKING, TEAM_CLASSIFICATION.
+Modes: PLAYER_DETECTION, BALL_DETECTION, PLAYER_TRACKING, TEAM_CLASSIFICATION,
+POSSESSION. POSSESSION adds image-space trails and a proximity-based estimate;
+it is not possession ground truth because no basketball court homography exists.
 """
 # Direct script execution needs both repository package roots before first-party imports.
 # ruff: noqa: E402
@@ -40,10 +42,13 @@ for package_root in (REPO_ROOT, REPO_ROOT / "sports"):
     if package_path not in sys.path:
         sys.path.insert(0, package_path)
 
+import cv2
 import numpy as np
 import supervision as sv
 from sports.common.ball import BallAnnotator, BallTracker
+from sports.common.possession import PossessionTracker
 from sports.common.team import TeamClassifier
+from sports.common.trace import TraceAnnotator
 from tqdm import tqdm
 from ultralytics import YOLO
 
@@ -59,16 +64,17 @@ PERSON_CLASS_ID = 0     # COCO
 BALL_CLASS_ID = 32      # COCO "sports ball"
 
 COLORS = ['#FF1493', '#00BFFF', '#FFD700']  # team 0, team 1, unresolved
-BOX_ANNOTATOR = sv.BoxAnnotator(color=sv.ColorPalette.from_hex(COLORS), thickness=2)
+COLOR_PALETTE = sv.ColorPalette.from_hex(COLORS)
+BOX_ANNOTATOR = sv.BoxAnnotator(color=COLOR_PALETTE, thickness=2)
 BOX_LABEL_ANNOTATOR = sv.LabelAnnotator(
-    color=sv.ColorPalette.from_hex(COLORS),
+    color=COLOR_PALETTE,
     text_color=sv.Color.from_hex('#FFFFFF'),
     text_padding=5,
     text_thickness=1,
 )
-ELLIPSE_ANNOTATOR = sv.EllipseAnnotator(color=sv.ColorPalette.from_hex(COLORS), thickness=2)
+ELLIPSE_ANNOTATOR = sv.EllipseAnnotator(color=COLOR_PALETTE, thickness=2)
 ELLIPSE_LABEL_ANNOTATOR = sv.LabelAnnotator(
-    color=sv.ColorPalette.from_hex(COLORS),
+    color=COLOR_PALETTE,
     text_color=sv.Color.from_hex('#FFFFFF'),
     text_padding=5,
     text_thickness=1,
@@ -76,6 +82,8 @@ ELLIPSE_LABEL_ANNOTATOR = sv.LabelAnnotator(
 )
 
 STRIDE = 30  # crop-collection stride for fitting the team classifier (shorter clips than soccer's)
+POSSESSION_PIXEL_RADIUS = 80.0
+POSSESSION_SWITCH_MARGIN = 20.0
 
 
 class Mode(Enum):
@@ -83,6 +91,7 @@ class Mode(Enum):
     BALL_DETECTION = 'BALL_DETECTION'
     PLAYER_TRACKING = 'PLAYER_TRACKING'
     TEAM_CLASSIFICATION = 'TEAM_CLASSIFICATION'
+    POSSESSION = 'POSSESSION'
 
 
 def get_crops(frame: np.ndarray, detections: sv.Detections) -> List[np.ndarray]:
@@ -124,6 +133,80 @@ def to_observations(
 def tracking_observer(source_video_path: str) -> TrackingObserver:
     """Build the Redis/Arize fan-out; both remain no-ops unless enabled."""
     return TrackingObserver.for_video(load_config(), source_video_path, sport="basketball")
+
+
+def draw_possession_hud(
+    frame: np.ndarray,
+    possession_tracker: PossessionTracker,
+) -> np.ndarray:
+    """Draw estimated two-team possession percentages."""
+    stats = possession_tracker.get_team_possession()
+    pct_0 = float(stats["team_0_pct"])
+    pct_1 = float(stats["team_1_pct"])
+    height, width = frame.shape[:2]
+    panel_width = min(360, max(220, width - 20))
+    panel_height = 72
+    x1 = max(10, width // 2 - panel_width // 2)
+    y1 = min(20, max(4, height // 20))
+    x2 = min(width - 10, x1 + panel_width)
+    y2 = min(height - 4, y1 + panel_height)
+
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, dst=frame)
+    cv2.putText(
+        frame,
+        "EST. POSSESSION",
+        (x1 + 12, y1 + 21),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
+    bar_x1, bar_x2 = x1 + 12, x2 - 12
+    bar_y1, bar_y2 = y1 + 33, y2 - 10
+    total = pct_0 + pct_1
+    split = (
+        bar_x1 + int((bar_x2 - bar_x1) * pct_0 / total)
+        if total
+        else (bar_x1 + bar_x2) // 2
+    )
+    cv2.rectangle(frame, (bar_x1, bar_y1), (split, bar_y2), COLOR_PALETTE.by_idx(0).as_bgr(), -1)
+    cv2.rectangle(frame, (split, bar_y1), (bar_x2, bar_y2), COLOR_PALETTE.by_idx(1).as_bgr(), -1)
+    cv2.rectangle(frame, (bar_x1, bar_y1), (bar_x2, bar_y2), (255, 255, 255), 1)
+    cv2.putText(
+        frame,
+        f"{pct_0:.0f}%",
+        (bar_x1 + 4, bar_y2 - 3),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
+    right_label = f"{pct_1:.0f}%"
+    (label_width, _), _ = cv2.getTextSize(
+        right_label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+    cv2.putText(
+        frame,
+        right_label,
+        (bar_x2 - label_width - 4, bar_y2 - 3),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
+    return frame
+
+
+def draw_holder_marker(frame: np.ndarray, center: np.ndarray, team_id: int | None) -> None:
+    """Mark the current estimated holder at the player's foot anchor."""
+    point = (int(center[0]), int(center[1]))
+    color = COLOR_PALETTE.by_idx(team_id if team_id is not None else 2).as_bgr()
+    cv2.ellipse(frame, point, (22, 9), 0, 0, 360, (255, 255, 255), 3, cv2.LINE_AA)
+    cv2.ellipse(frame, point, (22, 9), 0, 0, 360, color, 2, cv2.LINE_AA)
 
 
 def run_player_detection(source_video_path: str, device: str) -> Iterator[np.ndarray]:
@@ -183,7 +266,12 @@ def run_player_tracking(source_video_path: str, device: str) -> Iterator[np.ndar
         observer.close()
 
 
-def run_team_classification(source_video_path: str, device: str) -> Iterator[np.ndarray]:
+def run_team_classification(
+    source_video_path: str,
+    device: str,
+    *,
+    include_possession: bool = False,
+) -> Iterator[np.ndarray]:
     model = YOLO(DETECTION_MODEL_PATH).to(device=device)
 
     # Pass 1: collect player crops (strided) to fit the team classifier.
@@ -202,6 +290,21 @@ def run_team_classification(source_video_path: str, device: str) -> Iterator[np.
     tracker = sv.ByteTrack(minimum_consecutive_frames=3)
     ball_tracker = BallTracker(buffer_size=20)
     ball_annotator = BallAnnotator(radius=6, buffer_size=10)
+    video_info = sv.VideoInfo.from_video_path(source_video_path)
+    trace_annotator = (
+        TraceAnnotator(color_palette=COLOR_PALETTE, fps=video_info.fps)
+        if include_possession
+        else None
+    )
+    possession_tracker = (
+        PossessionTracker(
+            possession_radius=POSSESSION_PIXEL_RADIUS,
+            hysteresis_frames=3,
+            switch_margin=POSSESSION_SWITCH_MARGIN,
+        )
+        if include_possession
+        else None
+    )
     observer = tracking_observer(source_video_path)
     try:
         for frame_index, frame in enumerate(frame_generator):
@@ -225,13 +328,44 @@ def run_team_classification(source_video_path: str, device: str) -> Iterator[np.
             ) + to_observations(ball, "sports ball")
             observer.observe_frame(frame_index, observations)
 
+            player_anchors = players.get_anchors_coordinates(sv.Position.BOTTOM_CENTER)
+            holder_id = holder_team = None
+            if possession_tracker is not None and trace_annotator is not None:
+                ball_anchors = ball.get_anchors_coordinates(sv.Position.CENTER)
+                ball_xy = ball_anchors[0] if len(ball_anchors) else None
+                tracker_ids = (
+                    players.tracker_id
+                    if players.tracker_id is not None
+                    else np.array([], dtype=int)
+                )
+                holder_id, holder_team = possession_tracker.update(
+                    ball_xy=ball_xy,
+                    players_xy=player_anchors,
+                    tracker_ids=tracker_ids,
+                    team_ids=color_lookup,
+                )
+                trace_annotator.update(players, color_lookup)
+
             labels = [str(tracker_id) for tracker_id in players.tracker_id]
             annotated_frame = frame.copy()
+            if trace_annotator is not None:
+                annotated_frame = trace_annotator.annotate(annotated_frame)
             annotated_frame = ELLIPSE_ANNOTATOR.annotate(
                 annotated_frame, players, custom_color_lookup=color_lookup)
             annotated_frame = ELLIPSE_LABEL_ANNOTATOR.annotate(
                 annotated_frame, players, labels, custom_color_lookup=color_lookup)
             annotated_frame = ball_annotator.annotate(annotated_frame, ball)
+            if holder_id is not None and players.tracker_id is not None:
+                holder_matches = np.where(players.tracker_id == holder_id)[0]
+                if len(holder_matches):
+                    draw_holder_marker(
+                        annotated_frame,
+                        player_anchors[holder_matches[0]],
+                        holder_team,
+                    )
+            if possession_tracker is not None:
+                annotated_frame = draw_possession_hud(
+                    annotated_frame, possession_tracker)
             yield annotated_frame
     finally:
         observer.close()
@@ -246,6 +380,9 @@ def main(source_video_path: str, target_video_path: str, device: str, mode: Mode
         frame_generator = run_player_tracking(source_video_path, device)
     elif mode == Mode.TEAM_CLASSIFICATION:
         frame_generator = run_team_classification(source_video_path, device)
+    elif mode == Mode.POSSESSION:
+        frame_generator = run_team_classification(
+            source_video_path, device, include_possession=True)
     else:
         raise NotImplementedError(f"Mode {mode} is not implemented.")
 
