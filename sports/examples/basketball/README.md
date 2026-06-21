@@ -39,10 +39,11 @@ evaluation metric or ground truth.
   Colab run on real Basketball-51 footage will confirm.
 
 ## Swapping in a basketball-specific model later (Phase 3)
-Set the `BASKETBALL_DETECTION_MODEL` env var (or edit `DETECTION_MODEL_PATH` in `main.py`) to a
-fine-tuned checkpoint's path. Everything else in this file is unaffected — same COCO-style
-class IDs (`person=0`) only if the fine-tuned model keeps that scheme; adjust `PERSON_CLASS_ID`/
-`BALL_CLASS_ID` at the top of `main.py` if not.
+Set the `BASKETBALL_DETECTION_MODEL` env var to a fine-tuned checkpoint's path. The defaults
+remain COCO (`person=0`, `sports ball=32`). A fine-tuned dataset may use multiple player/action
+classes, so set comma-separated `BASKETBALL_PERSON_CLASS_IDS` and
+`BASKETBALL_BALL_CLASS_IDS` to the exact IDs printed by
+`python -m src.training.basketball inspect`. See `docs/TRAINING_BASKETBALL.md` from the root.
 
 ## Optional Redis + Arize output
 

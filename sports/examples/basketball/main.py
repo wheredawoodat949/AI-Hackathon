@@ -60,8 +60,21 @@ from src.integrations.tracking_observer import ObservedDetection, TrackingObserv
 # of this file: just point DETECTION_MODEL_PATH elsewhere.
 DETECTION_MODEL_PATH = os.environ.get("BASKETBALL_DETECTION_MODEL", "yolo11n.pt")
 
-PERSON_CLASS_ID = 0     # COCO
-BALL_CLASS_ID = 32      # COCO "sports ball"
+
+def parse_class_ids(name: str, default: str) -> tuple[int, ...]:
+    try:
+        values = tuple(dict.fromkeys(int(value.strip()) for value in os.environ.get(
+            name, default).split(",") if value.strip()))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a comma-separated list of integer class ids") from exc
+    if not values or any(value < 0 for value in values):
+        raise ValueError(f"{name} must contain non-negative class ids")
+    return values
+
+
+PERSON_CLASS_IDS = parse_class_ids("BASKETBALL_PERSON_CLASS_IDS", "0")  # COCO person
+BALL_CLASS_IDS = parse_class_ids("BASKETBALL_BALL_CLASS_IDS", "32")  # COCO sports ball
+DETECTION_CLASS_IDS = tuple(dict.fromkeys(PERSON_CLASS_IDS + BALL_CLASS_IDS))
 
 COLORS = ['#FF1493', '#00BFFF', '#FFD700']  # team 0, team 1, unresolved
 COLOR_PALETTE = sv.ColorPalette.from_hex(COLORS)
@@ -215,7 +228,7 @@ def run_player_detection(source_video_path: str, device: str) -> Iterator[np.nda
     observer = tracking_observer(source_video_path)
     try:
         for frame_index, frame in enumerate(frame_generator):
-            result = model(frame, classes=[PERSON_CLASS_ID], verbose=False)[0]
+            result = model(frame, classes=list(PERSON_CLASS_IDS), verbose=False)[0]
             detections = sv.Detections.from_ultralytics(result)
             observer.observe_frame(frame_index, to_observations(detections, "person"))
             annotated_frame = frame.copy()
@@ -234,7 +247,7 @@ def run_ball_detection(source_video_path: str, device: str) -> Iterator[np.ndarr
     observer = tracking_observer(source_video_path)
     try:
         for frame_index, frame in enumerate(frame_generator):
-            result = model(frame, classes=[BALL_CLASS_ID], verbose=False)[0]
+            result = model(frame, classes=list(BALL_CLASS_IDS), verbose=False)[0]
             detections = sv.Detections.from_ultralytics(result)
             detections = ball_tracker.update(detections)
             observer.observe_frame(frame_index, to_observations(detections, "sports ball"))
@@ -252,7 +265,7 @@ def run_player_tracking(source_video_path: str, device: str) -> Iterator[np.ndar
     observer = tracking_observer(source_video_path)
     try:
         for frame_index, frame in enumerate(frame_generator):
-            result = model(frame, classes=[PERSON_CLASS_ID], verbose=False)[0]
+            result = model(frame, classes=list(PERSON_CLASS_IDS), verbose=False)[0]
             detections = sv.Detections.from_ultralytics(result)
             detections = tracker.update_with_detections(detections)
             observer.observe_frame(frame_index, to_observations(detections, "person"))
@@ -278,7 +291,7 @@ def run_team_classification(
     crops: List[np.ndarray] = []
     frame_generator = sv.get_video_frames_generator(source_path=source_video_path, stride=STRIDE)
     for frame in tqdm(frame_generator, desc='collecting crops'):
-        result = model(frame, classes=[PERSON_CLASS_ID], verbose=False)[0]
+        result = model(frame, classes=list(PERSON_CLASS_IDS), verbose=False)[0]
         detections = sv.Detections.from_ultralytics(result)
         crops += get_crops(frame, detections)
 
@@ -308,10 +321,10 @@ def run_team_classification(
     observer = tracking_observer(source_video_path)
     try:
         for frame_index, frame in enumerate(frame_generator):
-            result = model(frame, classes=[PERSON_CLASS_ID, BALL_CLASS_ID], verbose=False)[0]
+            result = model(frame, classes=list(DETECTION_CLASS_IDS), verbose=False)[0]
             detections = sv.Detections.from_ultralytics(result)
 
-            players = detections[detections.class_id == PERSON_CLASS_ID]
+            players = detections[np.isin(detections.class_id, PERSON_CLASS_IDS)]
             players = tracker.update_with_detections(players)
             player_crops = get_crops(frame, players)
             color_lookup = (
@@ -320,7 +333,7 @@ def run_team_classification(
                 else np.array([], dtype=int)
             )
 
-            ball = detections[detections.class_id == BALL_CLASS_ID]
+            ball = detections[np.isin(detections.class_id, BALL_CLASS_IDS)]
             ball = ball_tracker.update(ball)
 
             observations = to_observations(

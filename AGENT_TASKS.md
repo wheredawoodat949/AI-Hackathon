@@ -14,8 +14,8 @@ are wrong):
 | 0 | Orientation & ground truth | Claude | ✅ done |
 | 1 | Basketball demo video (Path A) | Claude | ✅ code done, GPU validation pending |
 | 2 | Basketball detection data (Path B prep) | Claude | ✅ scaffolded, download pending |
-| 3 | Train basketball model | **Codex** | 🔲 not started |
-| 4 | Sponsor wiring (Redis, Pika Labs, Arize) | **Codex** | 🔲 not started |
+| 3 | Train basketball model | **Codex** | 🟡 reproducible code/Colab ready; credentials + GPU run pending |
+| 4 | Sponsor wiring (Redis, Pika Labs, Arize) | **Codex** | 🟡 wired/tested offline; hosted validation pending |
 | 5 | Agentic layer + polish | **Codex** (+ Claude reviews) | 🔲 not started |
 | 6 | Cross-sport polish (soccer + basketball demo parity) | **Codex** | 🔲 not started |
 | 7 | Devpost writeup + pitch prep | **Codex** (+ user content) | 🔲 not started |

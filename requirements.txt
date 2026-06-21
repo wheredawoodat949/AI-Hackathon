@@ -41,5 +41,8 @@ sentry-sdk>=2.0
 arize>=8.35,<9
 redis>=5.0
 
+# --- Basketball Path-B dataset download/training preparation ---
+roboflow>=1.3,<2
+
 # --- Dev / notebook ---
 jupyterlab>=4.0

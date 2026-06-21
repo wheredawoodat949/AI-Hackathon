@@ -311,3 +311,39 @@ from observed output. Record actual results rather than assuming quality.
 **Blocked on / open questions:** Real visual validation needs the user's Colab GPU + clip.
 Phase 3 still needs `ROBOFLOW_API_KEY` and GPU compute. Hosted sponsor checks still need their
 credentials. Phase 6–8 scope remains unconfirmed.
+
+---
+
+## 2026-06-21 — basketball — Phase 3 reproducible training workflow (Codex)
+
+**What changed:** Added `src.training.basketball` with separate download, inspect, and train
+commands plus `Basketball_Training.ipynb` for a Colab T4. The download command uses the
+authenticated Roboflow SDK's real `project.versions()` result and selects the highest numeric
+version (or a requested verified version), rather than filling the old `<latest>` placeholder.
+It validates real split directories and the exact class map before training. The trainer enforces
+CUDA by default, copies only an actually produced `best.pt`, and serializes only metrics returned
+by Ultralytics.
+
+**Runtime compatibility:** The basketball runner now accepts comma-separated
+`BASKETBALL_PERSON_CLASS_IDS` and `BASKETBALL_BALL_CLASS_IDS`. This supports datasets whose
+real class map includes multiple player/action classes without changing the zero-setup COCO
+defaults. The inspector prints suggestions from explicit class names, but does not apply them
+without review.
+
+**Current state / what works:** Version selection, YAML/split validation, class-map suggestions,
+download orchestration, real checkpoint copying, and returned metric persistence are tested with
+fakes. Complete suite: 43 passed, 2 data-dependent skips; Ruff, compilation, notebook JSON, and
+CLI smoke checks are clean. The local inspect command correctly stops because
+`data/basketball_det/data.yaml` does not exist. No dataset, checkpoint, or metric is claimed.
+
+**How to run it:** Open `Basketball_Training.ipynb` on a Colab T4, store
+`ROBOFLOW_API_KEY` as a private Colab secret, review the Universe dataset's current license,
+then run the cells. CLI details and artifact paths are in `docs/TRAINING_BASKETBALL.md`.
+
+**Next step:** Perform the real authenticated download, review the printed class map, run
+training, copy the resulting checkpoint/summary to Drive, and append the actual metrics here.
+Then set the printed runtime class IDs and render the real `POSSESSION` mode.
+
+**Blocked on / open questions:** Execution now immediately needs `ROBOFLOW_API_KEY` and the
+user's Colab GPU. Hosted Redis/Arize/Pika validation still needs credentials. Phase 6–8 scope
+remains unconfirmed.
