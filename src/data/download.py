@@ -53,6 +53,7 @@ def download_match(
     revision: str | None = None,
     source: str | None = None,
     video_pattern: str | None = None,
+    video_exclude: str | None = None,
 ) -> Path:
     """Download one match into `dest` (default: cfg.data_root). Returns the root.
 
@@ -67,7 +68,8 @@ def download_match(
 
     if source == "drive":
         return _download_drive_mirror(
-            dest, cfg.gdrive_mirror, match_id, include_videos, video_pattern
+            dest, cfg.gdrive_mirror, match_id, include_videos,
+            video_pattern, video_exclude,
         )
     if source != "hf":
         raise SystemExit(f"Unknown source {source!r}. Expected 'hf' or 'drive'.")
@@ -118,6 +120,7 @@ def _drive_match_files(
     match_id: str,
     include_videos: bool,
     video_pattern: str | None = None,
+    video_exclude: str | None = None,
 ) -> list[tuple[str, str]]:
     """Filter a gdown folder listing to exactly one match's files.
 
@@ -125,11 +128,14 @@ def _drive_match_files(
     and `videos/<id>/<file>` (or flat `videos/<id>_...`) for video. Returns
     (file_id, relative_path) pairs.
 
-    `video_pattern` (optional substring, case-insensitive) further restricts which
-    video files are kept — e.g. "panorama_2nd" to grab only the normal 2nd-half
-    panorama and skip the other ~5GB. None keeps every video for the match.
+    `video_pattern` (optional substring, case-insensitive) restricts which video
+    files are kept — e.g. "panorama_2nd" for the normal 2nd-half panorama.
+    `video_exclude` (optional substring) drops matches — e.g. "calibrated", since
+    "panorama_2nd" is itself a substring of "calibrated_panorama_2nd". Together they
+    pin the NORMAL 2nd-half panorama and skip the rest (~5GB + the 1.6GB calibrated).
     """
     pat = video_pattern.lower() if video_pattern else None
+    excl = video_exclude.lower() if video_exclude else None
     selected: list[tuple[str, str]] = []
     for e in entries:
         parts = e.path.split("/")
@@ -141,11 +147,14 @@ def _drive_match_files(
         if kind == "videos":
             if not include_videos:
                 continue
+            name = parts[-1].lower()
             # Mirror nests as videos/<id>/<file> or flattens to videos/<id>_...;
             # the match id appears as the dir name or the file-name prefix.
             if not (parts[-1].startswith(match_id) or match_id in parts):
                 continue
-            if pat is not None and pat not in parts[-1].lower():
+            if pat is not None and pat not in name:
+                continue
+            if excl is not None and excl in name:
                 continue
         else:
             if len(parts) < 2 or parts[1] != match_id:  # <kind>/<id>/<file>
@@ -160,6 +169,7 @@ def _download_drive_mirror(
     match_id: str,
     include_videos: bool,
     video_pattern: str | None = None,
+    video_exclude: str | None = None,
 ) -> Path:
     """Fetch ONE match from the official Drive mirror via gdown (no HF auth).
 
@@ -183,7 +193,9 @@ def _download_drive_mirror(
     if not entries:
         raise SystemExit("gdown returned no files. Is the mirror still shared/public?")
 
-    selected = _drive_match_files(entries, match_id, include_videos, video_pattern)
+    selected = _drive_match_files(
+        entries, match_id, include_videos, video_pattern, video_exclude
+    )
     if not selected:
         avail = sorted({e.path.split("/")[1] for e in entries
                         if len(e.path.split("/")) > 1 and not e.path.split("/")[1].startswith(".")})
@@ -233,6 +245,13 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
              "'panorama_2nd' to fetch ONLY the normal 2nd-half panorama (~3GB) "
              "and skip the other videos (~5GB). Omit to fetch all videos.",
     )
+    p.add_argument(
+        "--video-exclude",
+        default=None,
+        help="(drive only) drop videos whose name contains this substring, e.g. "
+             "'calibrated' — needed because 'panorama_2nd' also matches "
+             "'calibrated_panorama_2nd'. Use with --video-pattern panorama_2nd.",
+    )
     return p.parse_args(list(argv) if argv is not None else None)
 
 
@@ -244,6 +263,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         include_videos=not args.no_videos,
         source=args.source,
         video_pattern=args.video_pattern,
+        video_exclude=args.video_exclude,
     )
 
 
