@@ -135,3 +135,24 @@ neither agent can self-verify without your Kaggle/Colab access.
 3. Redis/Arize/Pika Labs credentials for Phase 4 — needs the user, see `AGENT_TASKS.md`.
 4. Confirm the Phase 6–8 extension is what was meant by "until phase 8."
 5. `soccer_1_cv.mp4` location — still unresolved, still not blocking.
+
+---
+
+## 2026-06-22 00:05 — basketball — Codex handoff prompt finalized
+
+**What changed:** Wrote the actual kickoff prompt for Codex 5.5 Max (the secondary agent) and
+gave it to the user to paste into a Codex session. No repo changes beyond this log entry — the
+prompt itself isn't a file, it's what initializes Codex's cold session, pointing it at this repo,
+branch `basketball`, and — in order — `AGENT_TASKS.md`, `CLAUDE.md`, `ONBOARDING.md`, `UPDATE.md`.
+
+**Current state / what works:** Same as the entry above — Phase 0–2 done, Phase 3–8 assigned to
+Codex in `AGENT_TASKS.md`. This entry exists so anyone reading the log later knows exactly when
+Codex was actually kicked off, separate from when the coordination docs were written.
+
+**Next step for whoever picks this up:** If you're Codex reading this because you just started —
+welcome, see `AGENT_TASKS.md` for your actual task list. If you're Claude or the user checking in
+later — look for a NEW entry below this one from Codex; if there isn't one yet, Codex hasn't
+pushed anything since this handoff.
+
+**Blocked on / open questions:** Same five as the entry above — none resolved by this entry
+alone, it's just the handoff marker.
