@@ -12,7 +12,7 @@ auto-downloads once your HF account has approved access AND you're
 authenticated (`huggingface_hub.login()` or `HF_TOKEN` env var).
 
 Setup (do this on the Colab GPU runtime, NOT a laptop):
-  1. pip install -U transformers accelerate
+  1. pip install -U "transformers>=5.12.1" accelerate torchvision
   2. Request access at https://huggingface.co/facebook/sam3 (NOT auto-approved —
      can be denied/delayed; this is the main risk to this path before the deadline.
      Check status: https://huggingface.co/settings/gated-repos)
@@ -21,24 +21,25 @@ Setup (do this on the Colab GPU runtime, NOT a laptop):
 If access is denied/delayed, see docs/DEFERRED.md (fal.ai hosted API, no gating)
 or fall back to `sam.backend: replay` (already verified, no GPU/weights needed).
 
-Promptable Concept Segmentation (PCS) finds ALL instances of ONE concept per
-text prompt — there's no documented multi-concept-per-call syntax. We run one
-full video pass per prompt (cfg.sam_prompts has 4: short clips, so 4 passes is
-cheap) and merge per-frame results by frame_index, offsetting each pass's
-object_ids so two different prompts' objects never collide.
+Promptable Concept Segmentation (PCS) accepts one or more short text prompts.
+Current Transformers releases reuse the video features and track all prompts in
+one pass. The postprocessed output includes ``prompt_to_obj_ids``, which this
+backend uses to preserve each detection's prompt label.
 
 Reference (HF model card, Sam3VideoModel "Pre-loaded Video Inference"):
     from transformers import Sam3VideoModel, Sam3VideoProcessor
     model = Sam3VideoModel.from_pretrained("facebook/sam3").to(device, dtype=torch.float16)
     processor = Sam3VideoProcessor.from_pretrained("facebook/sam3")
     session = processor.init_video_session(video=frames, inference_device=device, dtype=torch.float16)
-    session = processor.add_text_prompt(inference_session=session, text="person")
+    session = processor.add_text_prompt(inference_session=session, text=["person", "ball"])
     for out in model.propagate_in_video_iterator(inference_session=session):
         result = processor.postprocess_outputs(session, out)
-        # result["object_ids"], result["scores"], result["boxes"] (XYXY abs px), result["masks"]
+        # result["object_ids"], result["scores"], result["boxes"] (XYXY abs px),
+        # result["masks"], result["prompt_to_obj_ids"]
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Sequence
 
 import numpy as np
@@ -46,7 +47,6 @@ import numpy as np
 from src.model.sam_backend import Detection, FrameResult, TrackResult
 
 HF_REPO = "facebook/sam3"
-_OFFSET_PER_PROMPT = 100_000  # keeps instance_ids unique across separate per-prompt passes
 
 
 class SamLocalBackend:
@@ -70,26 +70,31 @@ class SamLocalBackend:
             from transformers import Sam3VideoModel, Sam3VideoProcessor
         except ImportError as exc:  # pragma: no cover
             raise ImportError(
-                "transformers (with SAM3 support) + accelerate are required for the\n"
-                "local SAM 3 backend. SAM3 is NOT in stable transformers yet — install main:\n"
-                "  pip install -U 'git+https://github.com/huggingface/transformers' accelerate\n"
+                "transformers>=5.12.1 + accelerate + torchvision are required for the\n"
+                "local SAM 3 backend. Install the released packages:\n"
+                "  pip install -U 'transformers>=5.12.1' accelerate torchvision\n"
                 "(then RESTART the runtime if on Colab/Jupyter)."
             ) from exc
 
         # T4 (Colab free tier, compute capability 7.5) doesn't support bfloat16 well —
         # the model card defaults to bf16 (assumes Ampere+); we use fp16 instead.
         self._dtype = torch.float16
+        token = os.environ.get("HF_TOKEN") or None
+        hub_kwargs = {"token": token} if token else {}
         try:
-            self._model = Sam3VideoModel.from_pretrained(self.repo_id).to(self.device, dtype=self._dtype)
-            self._processor = Sam3VideoProcessor.from_pretrained(self.repo_id)
+            self._model = Sam3VideoModel.from_pretrained(self.repo_id, **hub_kwargs).to(
+                self.device, dtype=self._dtype
+            )
+            self._processor = Sam3VideoProcessor.from_pretrained(self.repo_id, **hub_kwargs)
         except Exception as exc:  # noqa: BLE001 - surface the most likely cause, then re-raise
             hint = (
-                "  -> 'Can't load image processor': your transformers is too OLD (the stable\n"
-                "     wheel lacks Sam3ImageProcessor). Install main + RESTART runtime:\n"
-                "       pip install -U 'git+https://github.com/huggingface/transformers'\n"
+                "  -> 'Can't load image processor': your in-memory transformers is too OLD.\n"
+                "     Install the current release + RESTART the runtime:\n"
+                "       pip install -U 'transformers>=5.12.1'\n"
                 if "image processor" in str(exc).lower()
                 else "  1. Request access: https://huggingface.co/facebook/sam3 (can be denied/delayed)\n"
-                "  2. Authenticate: huggingface_hub.login(token=...) or set HF_TOKEN.\n"
+                "  2. Authenticate and set the newly verified token as HF_TOKEN.\n"
+                "  3. Run the notebook's direct config.json/processor_config.json access check.\n"
             )
             raise RuntimeError(
                 f"Could not load {self.repo_id} from Hugging Face.\n{hint}"
@@ -115,26 +120,24 @@ class SamLocalBackend:
         video_frames, _ = load_video(str(video_path))
         height, width = video_frames[0].shape[:2] if len(video_frames) else (None, None)
 
-        # frame_index -> accumulated detections across all prompt passes
-        merged: dict[int, list[Detection]] = {}
-        for prompt_idx, prompt in enumerate(prompts):
-            session = self._processor.init_video_session(
-                video=video_frames,
-                inference_device=self.device,
-                processing_device="cpu",
-                video_storage_device="cpu",
-                dtype=self._dtype,
-            )
-            session = self._processor.add_text_prompt(inference_session=session, text=prompt)
-            for model_outputs in self._model.propagate_in_video_iterator(inference_session=session):
-                out = self._processor.postprocess_outputs(session, model_outputs)
-                dets = _dets_from_output(out, prompt, prompt_idx, max_objects)
-                merged.setdefault(model_outputs.frame_idx, []).extend(dets)
-
-        for frame_index in sorted(merged):
+        session = self._processor.init_video_session(
+            video=video_frames,
+            inference_device=self.device,
+            processing_device="cpu",
+            video_storage_device="cpu",
+            dtype=self._dtype,
+        )
+        session = self._processor.add_text_prompt(
+            inference_session=session,
+            text=list(prompts),
+        )
+        for model_outputs in self._model.propagate_in_video_iterator(inference_session=session):
+            out = self._processor.postprocess_outputs(session, model_outputs)
+            # Transformers uses zero-based frame indices. The repository contract
+            # (iter_frames, GSR replay, visualization) is one-based.
             yield FrameResult(
-                frame_index=frame_index,
-                detections=tuple(merged[frame_index]),
+                frame_index=int(model_outputs.frame_idx) + 1,
+                detections=tuple(_dets_from_output(out, prompts, max_objects)),
                 width=width,
                 height=height,
             )
@@ -144,8 +147,12 @@ class SamLocalBackend:
         self._processor = None
 
 
-def _dets_from_output(out: dict, label: str, prompt_idx: int, max_objects: int | None) -> list[Detection]:
-    """Convert one postprocess_outputs() dict (one frame, one prompt pass) to Detections."""
+def _dets_from_output(
+    out: dict,
+    prompts: Sequence[str],
+    max_objects: int | None,
+) -> list[Detection]:
+    """Convert one official ``postprocess_outputs`` dictionary to detections."""
     object_ids = _to_numpy(out.get("object_ids"))
     scores = _to_numpy(out.get("scores"))
     boxes = _to_numpy(out.get("boxes"))  # XYXY, absolute pixel coords
@@ -154,9 +161,17 @@ def _dets_from_output(out: dict, label: str, prompt_idx: int, max_objects: int |
     if object_ids is None or boxes is None or len(boxes) == 0:
         return []
 
+    label_by_object_id: dict[int, str] = {}
+    for prompt, ids in (out.get("prompt_to_obj_ids") or {}).items():
+        prompt_ids = _to_numpy(ids)
+        if prompt_ids is not None:
+            label_by_object_id.update({int(obj_id): str(prompt) for obj_id in prompt_ids})
+
+    fallback_label = prompts[0] if len(prompts) == 1 else "object"
     n = len(boxes) if max_objects is None else min(len(boxes), max_objects)
     dets: list[Detection] = []
     for i in range(n):
+        object_id = int(object_ids[i])
         x1, y1, x2, y2 = (float(v) for v in boxes[i])
         mask = None
         if masks is not None and i < len(masks):
@@ -164,8 +179,8 @@ def _dets_from_output(out: dict, label: str, prompt_idx: int, max_objects: int |
             mask = mask.astype(bool) if mask is not None else None
         dets.append(
             Detection(
-                instance_id=prompt_idx * _OFFSET_PER_PROMPT + int(object_ids[i]),
-                label=label,
+                instance_id=object_id,
+                label=label_by_object_id.get(object_id, fallback_label),
                 bbox=(x1, y1, x2 - x1, y2 - y1),  # x, y, w, h — canonical Detection shape
                 mask=mask,
                 score=float(scores[i]) if scores is not None and i < len(scores) else None,

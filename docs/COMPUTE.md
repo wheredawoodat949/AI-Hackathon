@@ -56,13 +56,24 @@ needs at most a few GPU-hours. Size your compute ask accordingly.
 
 ---
 
-## 2. Where to get SAM 3.1 inference (ranked, fastest/most-certain first)
+## 2. How we actually run tracking (ranked, most-reliable first)
 
-### A. Google Colab free T4 — PRIMARY, `sam.backend: local`
+### A0. Google Colab free T4 + YOLO — PRIMARY, `sam.backend: yolo` (VERIFIED)
+The reliable path. Ultralytics YOLO + ByteTrack is **ungated, free, auto-downloads its
+weights, and runs on a Colab T4 in seconds**, giving real boxes + persistent track IDs.
+Notebook: `notebooks/colab_yolo_tracking.ipynb` — GPU check → clone+install → download clip
+→ `--backend yolo` → preview. No HF token, no gating, no runtime restart. Verified on a Mac
+(CPU): `yolo11n.pt` auto-downloaded with no token and detections converted to our `Detection`
+objects correctly. Accuracy knobs in `config.yaml`: `sam.yolo_weights` (yolo11n/s/m),
+`sam.conf`. Tradeoff: COCO `person`/`sports ball` only — no role split from the model (recover
+team/role later via jersey-color clustering, see ML_DIRECTIONS.md). The SAM path remains
+available for open-vocabulary role prompts; see §A.
+
+### A. Google Colab free T4 + SAM 3, `sam.backend: local` (live validation in progress)
 Free, real CUDA, 16GB VRAM — clears SAM 3.1's ~4GB floor easily; our only physical GPU
 (K1900, ~2GB) doesn't. Notebook: `notebooks/colab_sam_tracking.ipynb`.
 1. Open the notebook in Colab, **Runtime → Change runtime type → T4 GPU**.
-2. Clone the repo + `pip install -U transformers accelerate` (cell 2).
+2. Clone the repo + `pip install -U "transformers>=5.12.1" accelerate` (cell 2).
 3. Request access at [huggingface.co/facebook/sam3](https://huggingface.co/facebook/sam3) —
    **not guaranteed/instant, can be denied** (real reports of denials exist). Check approval
    status any time at [huggingface.co/settings/gated-repos](https://huggingface.co/settings/gated-repos).
@@ -73,12 +84,14 @@ Free, real CUDA, 16GB VRAM — clears SAM 3.1's ~4GB floor easily; our only phys
 
 `src/model/sam_local.py` uses the **official 🤗 Transformers path** straight from the live
 model card (`Sam3VideoModel`/`Sam3VideoProcessor`) — not a third-party wrapper. Promptable
-Concept Segmentation finds all instances of ONE concept per call, so it runs one full video
-pass per prompt (4 short passes for our 4 prompts) and merges results by frame, with
-instance IDs offset so two prompts' objects never collide. Uses fp16 (not the model card's
-default bf16 — Colab's T4 is pre-Ampere and doesn't support bf16 well).
-**Caveat (untested live):** access was pending as of 2026-06-21 — the inference call itself
-hasn't run yet end-to-end. If access stalls, don't wait — switch to B or C below.
+Concept Segmentation accepts a list of prompts and tracks them in one video pass, returning
+`prompt_to_obj_ids` for labeling. The backend converts Transformers' zero-based frame indices
+to the repository's one-based contract. It uses fp16 on the T4. The notebook removes stale token
+variables, verifies the exact pasted token and both gated processor configuration files, checks
+`transformers>=5.12.1`, creates a bounded 10-second/1280px clip, and captures the full inference
+console in `outputs/sam_local_console.txt`.
+**Caveat (untested live):** the real inference call still needs to complete end-to-end on Colab.
+If access stalls, don't wait — switch to B or C below.
 
 ### B. fal.ai hosted SAM 3.1 — DEFERRED fallback, no GPU needed at all
 No GPU, no gating, ~$0.16 for a 10s clip — just a `FAL_KEY`. Verified real and implemented
