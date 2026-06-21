@@ -347,3 +347,36 @@ Then set the printed runtime class IDs and render the real `POSSESSION` mode.
 **Blocked on / open questions:** Execution now immediately needs `ROBOFLOW_API_KEY` and the
 user's Colab GPU. Hosted Redis/Arize/Pika validation still needs credentials. Phase 6–8 scope
 remains unconfirmed.
+
+---
+
+## 2026-06-21 — basketball — Phase 5 evidence-backed health agent (Codex)
+
+**What changed:** Added a local `TrackingHealthAgent` that consumes the exact frame summaries
+sent to Arize. It records observed counts/confidence/churn, emits rolling threshold events with
+the frame window/value/threshold, and writes a factual JSON report when
+`TRACKING_ANALYSIS_OUTPUT` is configured. `Basketball_1.ipynb` now enables a local report and
+prints the narrative/evidence after the enhanced demo run.
+
+**Guardrails:** The agent explicitly states that track-set churn is not confirmed ID swaps,
+lists entry/exit and fragmentation only as possibilities, and labels low-confidence/high-churn
+overlap as coincidence rather than causation. It embeds no baseline or cross-sport comparison;
+those claims require real reports from both runs.
+
+**Current state / what works:** Thresholding, cooldown, evidence, report serialization, empty
+input, ordering validation, and observer lifecycle integration are tested. Complete suite:
+48 passed, 2 data-dependent skips; Ruff, compilation, notebook JSON, and diff checks are clean.
+No real run narrative is claimed because no basketball footage was processed in this environment.
+
+**How to run it:** Set
+`TRACKING_ANALYSIS_OUTPUT=outputs/basketball_tracking_health.json` and run any basketball mode,
+or run the updated `Basketball_1.ipynb`. Interpretation details are in
+`docs/TRACKING_HEALTH.md`.
+
+**Next step:** Generate a report from a real clip, review threshold events alongside the video
+and Arize dashboard, and tune thresholds only from observed behavior. A soccer/basketball
+comparison can be added after both real reports exist.
+
+**Blocked on / open questions:** The remaining immediate work needs user-controlled resources:
+Roboflow + GPU for Phase 3, hosted sponsor credentials for live Phase 4 validation, and a decision
+on whether to proceed with the proposed Phase 6–8 extension.

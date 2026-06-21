@@ -63,6 +63,9 @@ def test_observer_publishes_positions_and_measured_churn(adapter_fakes):
     assert len(frame_logs) == 1
     assert frame_logs[0].id_swap_rate is None
     assert frame_logs[0].track_churn_rate == pytest.approx(2 / 3)
+    observer.close()
+    assert observer.health_report is not None
+    assert observer.health_report.frames_observed == 2
 
 
 def test_noop_observer_still_returns_real_summary(monkeypatch):
@@ -80,3 +83,16 @@ def test_observation_validation():
         ObservedDetection("person", 2.0)
     with pytest.raises(ValueError, match="both"):
         ObservedDetection("person", 0.5, x=1)
+
+
+def test_configured_local_health_report_is_written(monkeypatch, tmp_path):
+    monkeypatch.setattr(redis_store, "init", lambda _cfg: False)
+    monkeypatch.setattr(arize, "init", lambda _cfg: False)
+    output = tmp_path / "health.json"
+    monkeypatch.setenv("TRACKING_ANALYSIS_OUTPUT", str(output))
+    observer = TrackingObserver(SimpleNamespace(), clip_id="game")
+    observer.observe_frame(0, [ObservedDetection("person", 0.8, track_id=1)])
+    observer.observe_frame(1, [ObservedDetection("person", 0.7, track_id=1)])
+    observer.close()
+    assert output.is_file()
+    assert '"frames_observed": 2' in output.read_text()

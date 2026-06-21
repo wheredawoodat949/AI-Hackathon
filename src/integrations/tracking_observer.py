@@ -8,14 +8,19 @@ identity annotations or a validated association.
 """
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from src.analysis.tracking_health import ClipHealthReport, TrackingHealthAgent
+from src.config import REPO_ROOT, env
 from src.obs import arize
 from src.store import redis_store
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -66,6 +71,9 @@ class TrackingObserver:
         self.redis_active = redis_store.init(cfg)
         self.arize_active = arize.init(cfg)
         self._previous_track_ids: set[int] | None = None
+        self.health_agent = TrackingHealthAgent()
+        self.health_report: ClipHealthReport | None = None
+        self._analysis_output = env("TRACKING_ANALYSIS_OUTPUT")
 
     @classmethod
     def for_video(cls, cfg: Any, video_path: str | Path, *, sport: str = "basketball"):
@@ -160,10 +168,22 @@ class TrackingObserver:
                 ))
 
         self._previous_track_ids = current_ids
+        self.health_agent.observe(summary)
         return summary
 
     def close(self) -> None:
         """Flush telemetry and close external connections."""
+        if self.health_report is None:
+            self.health_report = self.health_agent.finalize()
+            if self._analysis_output:
+                output = Path(self._analysis_output).expanduser()
+                if not output.is_absolute():
+                    output = REPO_ROOT / output
+                try:
+                    self.health_agent.write_report(output)
+                    LOGGER.info("Tracking health report: %s", output)
+                except Exception as exc:  # noqa: BLE001 - analysis is off critical path
+                    LOGGER.warning("Tracking health report write failed: %s", exc)
         if self.arize_active:
             arize.close()
         if self.redis_active:
