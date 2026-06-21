@@ -52,6 +52,7 @@ def download_match(
     repo_id: str | None = None,
     revision: str | None = None,
     source: str | None = None,
+    video_pattern: str | None = None,
 ) -> Path:
     """Download one match into `dest` (default: cfg.data_root). Returns the root.
 
@@ -65,7 +66,9 @@ def download_match(
     dest.mkdir(parents=True, exist_ok=True)
 
     if source == "drive":
-        return _download_drive_mirror(dest, cfg.gdrive_mirror, match_id, include_videos)
+        return _download_drive_mirror(
+            dest, cfg.gdrive_mirror, match_id, include_videos, video_pattern
+        )
     if source != "hf":
         raise SystemExit(f"Unknown source {source!r}. Expected 'hf' or 'drive'.")
 
@@ -110,12 +113,23 @@ def download_match(
 _DRIVE_KINDS = ("gsr", "bas", "mot", "raw", "videos")
 
 
-def _drive_match_files(entries, match_id: str, include_videos: bool) -> list[tuple[str, str]]:
+def _drive_match_files(
+    entries,
+    match_id: str,
+    include_videos: bool,
+    video_pattern: str | None = None,
+) -> list[tuple[str, str]]:
     """Filter a gdown folder listing to exactly one match's files.
 
     The mirror's relative paths are clean: `<kind>/<id>/<file>` for annotations
-    and `videos/<id>_...` for video. Returns (file_id, relative_path) pairs.
+    and `videos/<id>/<file>` (or flat `videos/<id>_...`) for video. Returns
+    (file_id, relative_path) pairs.
+
+    `video_pattern` (optional substring, case-insensitive) further restricts which
+    video files are kept — e.g. "panorama_2nd" to grab only the normal 2nd-half
+    panorama and skip the other ~5GB. None keeps every video for the match.
     """
+    pat = video_pattern.lower() if video_pattern else None
     selected: list[tuple[str, str]] = []
     for e in entries:
         parts = e.path.split("/")
@@ -127,7 +141,11 @@ def _drive_match_files(entries, match_id: str, include_videos: bool) -> list[tup
         if kind == "videos":
             if not include_videos:
                 continue
-            if not parts[-1].startswith(match_id):  # videos/<id>_panorama_...mp4
+            # Mirror nests as videos/<id>/<file> or flattens to videos/<id>_...;
+            # the match id appears as the dir name or the file-name prefix.
+            if not (parts[-1].startswith(match_id) or match_id in parts):
+                continue
+            if pat is not None and pat not in parts[-1].lower():
                 continue
         else:
             if len(parts) < 2 or parts[1] != match_id:  # <kind>/<id>/<file>
@@ -137,7 +155,11 @@ def _drive_match_files(entries, match_id: str, include_videos: bool) -> list[tup
 
 
 def _download_drive_mirror(
-    dest: Path, folder_id: str | None, match_id: str, include_videos: bool
+    dest: Path,
+    folder_id: str | None,
+    match_id: str,
+    include_videos: bool,
+    video_pattern: str | None = None,
 ) -> Path:
     """Fetch ONE match from the official Drive mirror via gdown (no HF auth).
 
@@ -161,7 +183,7 @@ def _download_drive_mirror(
     if not entries:
         raise SystemExit("gdown returned no files. Is the mirror still shared/public?")
 
-    selected = _drive_match_files(entries, match_id, include_videos)
+    selected = _drive_match_files(entries, match_id, include_videos, video_pattern)
     if not selected:
         avail = sorted({e.path.split("/")[1] for e in entries
                         if len(e.path.split("/")) > 1 and not e.path.split("/")[1].startswith(".")})
@@ -204,6 +226,13 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         help=f"Where to pull from (default: dataset.source={cfg.source}). "
              "'drive' uses the official Drive mirror via gdown (no HF gating).",
     )
+    p.add_argument(
+        "--video-pattern",
+        default=None,
+        help="(drive only) substring filter on video filenames, e.g. "
+             "'panorama_2nd' to fetch ONLY the normal 2nd-half panorama (~3GB) "
+             "and skip the other videos (~5GB). Omit to fetch all videos.",
+    )
     return p.parse_args(list(argv) if argv is not None else None)
 
 
@@ -214,6 +243,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         dest=args.dest,
         include_videos=not args.no_videos,
         source=args.source,
+        video_pattern=args.video_pattern,
     )
 
 
