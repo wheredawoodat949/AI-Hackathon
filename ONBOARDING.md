@@ -5,6 +5,11 @@ prompt don't match what's actually in the repo — corrected below.** Nothing de
 no training, no commits to `main`/`sam_model_vincent`. New branch `basketball` created off
 `origin/sam_model_vincent` for this work.
 
+> **Status update (2026-06-21, later same day):** Phase 0 (this doc) is done; Phase 1 (basketball
+> demo pipeline) and Phase 2 (detection-data scaffold) are also done — see `AGENT_TASKS.md` for
+> current status and `UPDATE.md` for the detailed log. This doc is left as-is below as the
+> point-in-time orientation record; don't edit history, append new findings to `UPDATE.md` instead.
+
 ---
 
 ## 1. Repo & branch map (`git fetch --all`, verified 2026-06-21)

@@ -1,0 +1,38 @@
+# Phase 2 (Path B) — basketball detection training config, Ultralytics YOLO format.
+#
+# TEMPLATE — Basketball-51 has NO detection labels (CLAUDE.md §3/§4), so this points at a
+# SEPARATE, real, verified-to-exist labeled dataset, not yet downloaded into this repo.
+#
+# Candidate source (verified on Roboflow Universe 2026-06-21, not yet pulled — needs a free
+# Roboflow account + API key, same credential-gating pattern as Kaggle):
+#   https://universe.roboflow.com/roboflow-jvuqo/basketball-player-detection-2
+#   1.4k images, mAP@50 94.6%. Classes include plain ball/player/referee/number plus action
+#   sub-classes (player-dribble, player-jump-shot, player-layup, ...).
+#   Alternative: https://universe.roboflow.com/roboflow-jvuqo/basketball-player-detection-3-ycjdo
+#   (654 images, adds rim/ball-in-basket classes — useful if shot-detection becomes relevant).
+#
+# Download once you have a Roboflow API key (free tier):
+#   pip install roboflow
+#   from roboflow import Roboflow
+#   rf = Roboflow(api_key="<your key>")
+#   project = rf.workspace("roboflow-jvuqo").project("basketball-player-detection-2")
+#   dataset = project.version(<latest>).download("yolov8")   # writes train/valid/test + this file
+# That download OVERWRITES this template with the real one (correct nc/names/paths) — keep this
+# file as the fallback/documentation if it's ever lost.
+#
+# Until downloaded: train.py/yolo CLI pointed at this file will fail with a clear "path not
+# found" error — that's expected, not a bug. No synthetic placeholder images are faked here.
+
+path: ./data/basketball_det        # gitignored — created by the Roboflow download above
+train: train/images
+val: valid/images
+test: test/images
+
+# Placeholder class list — REPLACE with the real names/order from the downloaded dataset's own
+# data.yaml (Roboflow generates this automatically; don't hand-maintain it after download).
+names:
+  0: ball
+  1: player
+  2: referee
+  3: number
+nc: 4
