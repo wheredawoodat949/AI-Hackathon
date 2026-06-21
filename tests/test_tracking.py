@@ -78,15 +78,29 @@ def test_detection_foot_and_center_xy():
     assert d.foot_xy == (25.0, 60.0)  # bottom-middle: x + w/2, y + h
 
 
-def test_sam_local_backend_missing_weights_raises_clear_error(tmp_path, monkeypatch):
-    """No sam3.pt on disk -> a clear FileNotFoundError before any GPU/import work."""
-    import dataclasses
-
-    from src.model.sam_local import SamLocalBackend
+def test_sam_local_backend_reads_hf_repo_from_config():
+    from src.model.sam_local import HF_REPO, SamLocalBackend
 
     cfg = load_config()
-    cfg = dataclasses.replace(cfg, raw={**cfg.raw, "sam": {**cfg.raw["sam"], "weights": "sam3.pt"}})
-    monkeypatch.chdir(tmp_path)  # no sam3.pt here
     backend = SamLocalBackend(cfg)
-    with pytest.raises(FileNotFoundError, match="huggingface.co/facebook/sam3"):
-        backend._ensure_weights()
+    assert backend.repo_id == HF_REPO == "facebook/sam3"
+
+
+def test_sam_local_backend_fails_loud_without_gpu(monkeypatch):
+    """No CUDA -> require_gpu() raises before any HF network/auth call.
+
+    On an actual CUDA box this instead proceeds to the from_pretrained() call,
+    which will fail on network/auth in this sandboxed test environment — either
+    outcome is acceptable; we only assert it never silently fabricates detections.
+    """
+    from src.model.sam_local import SamLocalBackend
+    from src.utils.gpu import GPUNotAvailable
+
+    monkeypatch.delenv("ALLOW_CPU", raising=False)
+    cfg = load_config()
+    backend = SamLocalBackend(cfg)
+    try:
+        next(iter(backend.track("dummy.mp4", cfg.sam_prompts)))
+        raise AssertionError("expected this to fail without GPU/HF access in the test sandbox")
+    except (GPUNotAvailable, ImportError, RuntimeError):
+        pass

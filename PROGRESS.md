@@ -78,13 +78,17 @@ functions so `make test` stays green on any machine. Don't add them at module to
 - [x] `src/tracking/demo.py` — `python -m src.tracking.demo` renders an annotated clip to `outputs/`.
 - [x] **VERIFIED on Mac (no GPU):** produced `outputs/track_117093_replay.mp4` — 100 frames, 960x376,
       25 fps; 20 players (green) + 2 keepers (orange) with persistent IDs. Tests: 14/14 green, ruff clean.
-- [x] **`sam_local.py` implemented for real** via Ultralytics `SAM3VideoSemanticPredictor`
-      (verified against official Ultralytics SAM 3 docs) — text-prompted detect+track, adapted
-      to our `Detection(bbox=(x,y,w,h))`/`FrameResult` shapes incl. new `foot_xy`/`center_xy`
-      helpers on `Detection` and `of_label()`/`width`/`height` on `FrameResult` (additive, backward
-      compatible). Targets the Colab T4 GPU. **NOT yet live-tested** (no Colab GPU run done yet) —
-      credential/weights-missing error path is unit-tested (18/18 tests), the actual inference call
-      needs a live run to confirm.
+- [x] **`sam_local.py` implemented for real** via 🤗 Transformers `Sam3VideoModel`/`Sam3VideoProcessor`
+      (the official distribution path per the live model card at huggingface.co/facebook/sam3 —
+      weights auto-download via `from_pretrained()` once access is approved, no manual file
+      placement). Runs one full video pass per prompt (PCS finds all instances of ONE concept per
+      call; no documented multi-concept syntax) and merges per-frame results, offsetting instance
+      IDs so prompts never collide. Adapted to our `Detection(bbox=(x,y,w,h))`/`FrameResult` shapes
+      incl. new `foot_xy`/`center_xy` helpers on `Detection` and `of_label()`/`width`/`height` on
+      `FrameResult` (additive, backward compatible). Targets the Colab T4 GPU (fp16, not the model
+      card's default bf16 — T4 is pre-Ampere). **NOT yet live-tested** (access request submitted,
+      awaiting Meta's review as of 2026-06-21) — error paths are unit-tested (18/18 tests), the
+      actual inference call needs a live run + approved access to confirm.
 - [x] **`notebooks/colab_sam_tracking.ipynb`** — full Colab bring-up: GPU check, clone+install,
       gated SAM3 weight request/download (flags the real risk: access can be denied/delayed),
       download a real clip, run `--backend local`, preview the output. **Next action: open it in

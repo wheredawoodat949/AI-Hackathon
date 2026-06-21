@@ -41,10 +41,8 @@ dataset:
 sam:
   backend: replay       # replay | local | api  — see src/model/{replay,sam_local,sam_api}.py
   fal_model: "fal-ai/sam-3-1/video"   # used by sam_api.py when backend: api (deferred)
-  weights: "sam3.pt"    # used by sam_local.py when backend: local — gated, see that file's docstring
-  conf: 0.25            # detection confidence threshold (Ultralytics SAM3VideoSemanticPredictor)
-  imgsz: 640
-  half: true            # FP16 — fits comfortably in a Colab T4's 16GB
+  hf_repo: "facebook/sam3"  # used by sam_local.py when backend: local — gated, auto-downloads
+                             # via from_pretrained() once HF access is approved + authenticated
   # Simple noun-phrase prompts only. SAM 3.1 does NOT do referring expressions.
   prompts:
     - "soccer player"
