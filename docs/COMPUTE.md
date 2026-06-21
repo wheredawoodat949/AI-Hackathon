@@ -5,19 +5,25 @@ Berkeley AI Hackathon. **Read this before burning time chasing clusters** — th
 fastest path is almost always the team GPU box or a sponsor cloud, not a
 DOE supercomputer.
 
-> ## ⚡ CONFIRMED from the hackathon Slack (2026-06-20)
-> - **The hackathon itself provides NO GPUs** and no general GPU/HuggingFace credits.
->   (Director, `#0-ask-directors`: *"We unfortunately won't have GPUs. There will be 3 3D printers!"*)
-> - **RunPod** is a sponsor (`#spons-runpod`) → on-demand GPU cloud (A100/H100/4090). Credits are
->   **not auto-granted** — get the promo/code at the RunPod booth or in `#spons-runpod`. **This is our
->   primary GPU path for self-hosting SAM.**
-> - **Annapurna Labs** (AWS silicon) is a **cohost** (`#cohost-annapurna-labs`) with a track + workshop.
->   AWS-credit availability still unanswered in Slack — **ask at their booth.** Caveat: their accelerators
->   are Trainium/Inferentia (AWS Neuron, training-oriented) — not drop-in CUDA for SAM inference.
-> - **Anthropic** gives **~$25–50 Claude API credits/hacker** (apply with a school email; see `#spons-anthropic`).
->   That's for the Claude API (our AI layer / a tactical-LLM feature), **not** a GPU.
-> - Net: plan on **RunPod (ask for credits) or the team GPU box**; Colab/Kaggle as free fallback. Don't
->   count on NERSC/JGI (see §3).
+> ## ⚡ DECISION (2026-06-20): use the fal.ai hosted SAM 3.1 API. Here's why.
+> - **The hackathon provides NO GPUs**, confirmed twice: Slack director (`#0-ask-directors`:
+>   *"We unfortunately won't have GPUs. There will be 3 3D printers!"*) AND the official live
+>   site (live.hackberkeley.org) sponsor-resource list — **RunPod isn't even on it** (Slack-only,
+>   credits not auto-granted, requires a booth visit) and **Annapurna Labs is a "Showcase — Coming
+>   Soon" prize category**, not a GPU-credit program (also: their chips are AWS Trainium/Neuron,
+>   not CUDA — wrong fit for SAM regardless).
+> - **Our only team GPU is a K1900** (~2009-2013 Kepler-era workstation mobile GPU, ~2GB VRAM) —
+>   **below SAM 3.1's ~4GB inference floor.** Self-hosting on it is not viable.
+> - **Verified fix: [fal.ai](https://fal.ai) hosts real SAM 3.1** at `fal-ai/sam-3-1/video` — takes
+>   our exact comma-separated text prompts, costs **$0.01 per 16 input frames** (~$0.16 for a
+>   10s/25fps clip, a few dollars for a whole match), and needs **zero GPU of ours** — just a
+>   `FAL_KEY` (sign up + small payment method). This is now `sam.backend: api` in `config.yaml`,
+>   implemented in `src/model/sam_api.py`. **Action: get a FAL_KEY and add it to `.env`.**
+> - `sam.backend: replay` (default right now) needs no GPU and no key at all — it's already
+>   verified working (Phase 1). Swap to `api` the moment a FAL_KEY exists; swap to `local` only if
+>   a real CUDA GPU (RunPod credits, a teammate's gaming laptop, etc.) shows up later.
+> - **Anthropic** gives ~$25–50 Claude API credits/hacker (school email, `#spons-anthropic`) — for
+>   Claude, not a GPU. NERSC/JGI remains off-policy (§3) — don't.
 
 ---
 
@@ -48,44 +54,40 @@ needs at most a few GPU-hours. Size your compute ask accordingly.
 
 ---
 
-## 2. Where to get a GPU (ranked, fastest first)
+## 2. Where to get SAM 3.1 inference (ranked, fastest/most-certain first)
 
-### A. The team GPU box (primary — CLAUDE.md §2)
-JupyterLab-in-VSCode with a GPU is our assumed environment. Verify before any heavy
-run:
-```bash
-python -m src.utils.gpu      # prints the device; fails loud if no CUDA
-```
-Everything is built to run here. Use this unless you hit a memory wall on full-match
-4K, in which case drop to shorter clips or a lower-res proxy first.
+### A. fal.ai hosted SAM 3.1 — PRIMARY, do this first
+No GPU needed at all, ~$0.16 for a 10s clip, works right now from any laptop:
+1. Sign up at [fal.ai](https://fal.ai), create an API key.
+2. Add `FAL_KEY=...` to `.env`.
+3. `pip install fal-client` (in `requirements.txt` already).
+4. Set `sam.backend: api` in `config.yaml` (or `python -m src.tracking.demo --backend api --video <clip.mp4>`).
+`src/model/sam_api.py` uploads the clip, calls `fal-ai/sam-3-1/video` with our
+`sam.prompts` joined as `"soccer player, goalkeeper, referee, sports ball"`, and downloads
+the real annotated/masked output video to `outputs/`. **Caveat (untested live):** the
+documented API returns the masked video for certain, but per-frame numeric box data isn't
+guaranteed in the response — if a live run shows it's present, tighten
+`_frame_results_from_fal()` in that file to populate real `Detection` objects; if not, the
+masked video alone is still a legitimate "real SAM 3.1 on our footage" demo artifact.
 
-### B. RunPod — our primary GPU path (sponsor, confirmed)
-RunPod (`#spons-runpod`) is an on-demand GPU cloud: spin up an A100/H100/4090 pod in
-minutes, with NVIDIA CUDA (so `sam_local` works directly). Workflow:
-1. **Get credits** — ask at the RunPod booth or in `#spons-runpod` for the hackathon promo
-   code (not auto-granted as of 2026-06-20). Sign up at runpod.io.
-2. Launch a **GPU Pod** with a PyTorch/CUDA template (or a Jupyter template). A single
-   A100-40GB is plenty for short-clip SAM inference; H100 if you push full matches.
-3. SSH in (or use their Jupyter), then the standard bring-up in §5. Pull our repo, install,
-   run. Persist outputs to a volume or `scp` them back before the pod is torn down.
-- If credits don't come through, fall back to §C/§D, or use the **hosted SAM API backend**
-  (`sam.backend: api`) which needs no GPU of our own at all.
+### B. `sam.backend: replay` — already working, zero cost, zero GPU
+The current default. Replays GSR ground truth through the exact same interface so the
+whole pipeline (track → visualize → encode) runs today with no key and no GPU. Good
+fallback if fal.ai access has any hiccup before the deadline. See Phase 1 in `PROGRESS.md`.
 
-### B2. Annapurna Labs / AWS (cohost — ask at booth)
-AWS-silicon cohost with a dedicated track. If they hand out **AWS credits**, you can launch
-a `g5`/`g6` (NVIDIA A10G/L4) or `p4`/`p5` (A100/H100) EC2 instance — standard CUDA, our
-`sam_local` runs as-is. Their *own* Trainium/Inferentia chips need the AWS Neuron SDK and a
-model port, so **don't** target those for SAM in 24h; only relevant if we pivot to an LLM
-training/inference demo on Neuron. Ask in `#cohost-annapurna-labs`.
+### C. A real CUDA GPU, if one materializes — `sam.backend: local`
+**Confirmed not available to us right now:** the hackathon provides no GPUs (Slack +
+live.hackberkeley.org both confirm), RunPod credits need an in-person booth visit and
+aren't guaranteed, Annapurna Labs is a prize showcase not a GPU-credit program, and our
+only team GPU (K1900, ~2GB) is below SAM 3.1's ~4GB floor. **If this changes** (someone
+gets RunPod credits, or has/borrows a modern NVIDIA laptop with 4GB+ VRAM — note SAM 3.1's
+real footprint is small, an RTX 4060 8GB runs it fine), `src/model/sam_local.py` is ready
+for the HF Transformers path (`Sam3Model`/`Sam3Processor` from `facebook/sam3`, gated —
+request access on Hugging Face first).
 
-### C. Free standby GPUs (no waiting on organizers)
-- **Google Colab** — free T4; Pro gives L4/A100. Mount the repo, `pip install -r
-  requirements.txt`, run notebooks. Good for short-clip SAM inference + YOLO fine-tune.
-- **Kaggle Notebooks** — 2×T4 or P100, ~30 GPU-hours/week free. Good for a YOLO fine-tune.
-
-### D. Pay-as-you-go (if someone has a card / credits)
-Modal, Lambda Cloud, RunPod, Together, Hyperbolic — spin up an A100/H100 in minutes.
-Modal in particular is nice for wrapping `src/` functions as serverless GPU jobs.
+### D. Free standby GPUs (backup, not primary)
+- **Google Colab** — free T4. Good for a YOLO fine-tune (docs/ML_DIRECTIONS.md) if there's time.
+- **Kaggle Notebooks** — 2×T4, ~30 GPU-hours/week free.
 
 ---
 
@@ -125,29 +127,27 @@ Refs: [NERSC ERCAP](https://docs.nersc.gov/allocations/ercap_form/) ·
 [Perlmutter jobs](https://nersc.gitlab.io/systems/perlmutter/running-jobs/) ·
 [Queues & charges](https://docs.nersc.gov/jobs/policy/)
 
-## 4. "Anupurna lab" GPUs — UNVERIFIED, confirm before relying on it
+## 4. "Annapurna Labs" — resolved: it's an AWS-silicon hackathon cohost, not a GPU lender
 
-We could not confirm a lab by this name or its GPU access terms, so **do not plan around
-it until verified.** If it's a campus research lab willing to lend GPU time, ask the lab
-admin for, specifically:
-1. An account / SSH host (and whether it needs campus VPN).
-2. Scheduler: bare GPUs (just `nvidia-smi` + run) or **SLURM** (then use the §3 sbatch
-   pattern with their `-A`/partition names).
-3. GPU model + count + any time limits, and whether external-data downloads (our gdown
-   pull of the SoccerTrack mirror) are allowed from their network.
-Once you have that, our repo runs there unchanged: `pip install -r requirements.txt` →
-`python -m src.utils.gpu` → `python -m src.data.download` → notebooks.
+Confirmed via Slack (`#cohost-annapurna-labs`) and the live site: Annapurna Labs (AWS's
+chip division) is a **cohost with a "Showcase — Coming Soon" prize**, not a GPU-credit
+program. Their hardware is Trainium/Inferentia (AWS Neuron SDK) — even if they hand out
+AWS credits, that's the wrong accelerator family for SAM (no CUDA). Only relevant if your
+team separately gets general AWS credits and launches a `g5`/`g6`/`p4` (NVIDIA) EC2
+instance — ask in their channel, but don't plan the demo around it.
 
 ---
 
-## 5. Once you have ANY GPU — the standard bring-up
+## 5. Standard bring-up (works with or without a GPU)
 ```bash
 git clone https://github.com/wheredawoodat949/AI-Hackathon && cd AI-Hackathon
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt            # CUDA build of torch per pytorch.org
-python -m src.utils.gpu                     # MUST show CUDA before heavy runs
-python -m src.data.download --match 117093  # Drive mirror, incl. video (no auth)
-# then run notebooks/demo.ipynb or the Phase-1 tracking entrypoint
+make setup && source .venv/bin/activate
+make test                                    # should be green with no GPU/data
+python -m src.data.download --match 117093 --no-videos   # Drive mirror, no auth
+python -m src.tracking.demo                  # backend: replay — verifies the whole path
 ```
-For SAM specifically, if no local CUDA is available, set `sam.backend: api` in
-`config.yaml` and use a hosted endpoint instead of self-hosted weights.
+**Only if you have a real CUDA GPU**, also run `python -m src.utils.gpu` (fails loud
+otherwise) and `python -m src.data.download --match 117093` (adds the panorama video) before
+`python -m src.tracking.demo --backend local --video data/videos/...`. **Otherwise**, set
+`FAL_KEY` in `.env` and use `--backend api` — see §2.A. No CUDA build of torch is required
+unless you're actually using `sam.backend: local`.

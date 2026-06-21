@@ -16,6 +16,9 @@ pillow>=10.0
 scipy>=1.11
 # requests used by the hosted-SAM (api) backend
 requests>=2.31
+# fal-client: primary no-GPU SAM 3.1 path (config.yaml sam.backend: api). Needs
+# FAL_KEY in .env (sign up at fal.ai). Only imported when that backend is used.
+fal-client>=0.5
 
 # --- Phase 2: eval (uses the SoccerTrack-v2 package's HOTA — do NOT reimplement) ---
 # On the GPU box, also have the dataset repo importable:

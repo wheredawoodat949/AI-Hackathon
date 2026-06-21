@@ -87,6 +87,10 @@ class Config:
         return list(self.raw["sam"]["prompts"])
 
     @property
+    def sam_fal_model(self) -> str:
+        return self.raw["sam"].get("fal_model", "fal-ai/sam-3-1/video")
+
+    @property
     def max_tracked(self) -> int:
         return int(self.raw["sam"]["max_tracked"])
 

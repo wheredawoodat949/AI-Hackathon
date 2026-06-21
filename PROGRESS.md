@@ -68,13 +68,23 @@ functions so `make test` stays green on any machine. Don't add them at module to
 - [x] `src/tracking/demo.py` — `python -m src.tracking.demo` renders an annotated clip to `outputs/`.
 - [x] **VERIFIED on Mac (no GPU):** produced `outputs/track_117093_replay.mp4` — 100 frames, 960x376,
       25 fps; 20 players (green) + 2 keepers (orange) with persistent IDs. Tests: 14/14 green, ruff clean.
-- [ ] **GPU box (Role A next):** real SAM 3.1 in `sam_local.py`/`sam_api.py`; run
-      `python -m src.tracking.demo --backend local --video <panorama.mp4>` for masks+IDs on real video.
-      Fallback if SAM 3.1 access lags: Grounding-DINO+SAM2 / YOLO-World behind the same interface.
+- [x] **`sam_api.py` implemented against fal.ai** (`fal-ai/sam-3-1/video`) — real SAM 3.1, no GPU
+      needed, ~$0.16/10s clip. Uploads clip, sends our prompts, downloads the real annotated video to
+      `outputs/`. **NOT yet live-tested** (no FAL_KEY in hand) — credential-check + plumbing verified
+      (16/16 tests incl. `test_sam_api_backend_requires_fal_key`), network path needs a real key to confirm.
+- [ ] **Next:** get a `FAL_KEY` (fal.ai signup), add to `.env`, set `sam.backend: api`, run
+      `python -m src.tracking.demo --backend api --video <real clip>` and confirm what fal actually
+      returns — tighten `_frame_results_from_fal()` in `sam_api.py` if structured per-frame boxes are
+      present (currently best-effort/defensive; the masked video alone is a valid fallback demo asset).
+      `sam_local.py` stays stubbed (no viable local GPU — see below).
 
-GPU access (confirmed via Slack): hackathon provides **none**; use **RunPod** (sponsor, get credits at
-booth/`#spons-runpod`) or the team box. See [docs/COMPUTE.md](docs/COMPUTE.md). ML extensions + QLoRA
-verdict (skip QLoRA): [docs/ML_DIRECTIONS.md](docs/ML_DIRECTIONS.md).
+**GPU access — CONFIRMED (Slack + live.hackberkeley.org, 2026-06-20):** hackathon provides none;
+RunPod isn't even on the official sponsor-resource list (Slack-only, booth visit needed, not
+guaranteed); Annapurna Labs is a prize showcase, not GPU credits (and uses AWS Neuron, not CUDA,
+anyway); our only team GPU (K1900, ~2GB) is below SAM 3.1's ~4GB floor. **Decision: fal.ai hosted
+API is primary** (see `sam.backend: api` above); `replay` remains the zero-cost fallback. Full
+writeup: [docs/COMPUTE.md](docs/COMPUTE.md). ML extensions + QLoRA verdict (skip QLoRA):
+[docs/ML_DIRECTIONS.md](docs/ML_DIRECTIONS.md).
 
 ## Phase 2+ — not started
 Phase 2 = homography → minimap → HOTA (Role B). The replay backend gives Role B real tracked input now.
