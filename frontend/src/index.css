@@ -1,0 +1,281 @@
+@import "tailwindcss";
+
+/* ----------------------------------------------------------------------------
+   MotionCast — Design Tokens
+   Dark, premium, data-tool aesthetic. Green signature accent used sparingly.
+---------------------------------------------------------------------------- */
+@theme {
+  /* Surfaces — deep near-black, layered elevation */
+  --color-base: #0a0b0d;
+  --color-panel: #0d0f11;
+  --color-surface: #101315;
+  --color-surface-2: #14181a;
+  --color-elevated: #181d1f;
+
+  /* Hairline borders (low-opacity white) */
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.12);
+
+  /* Signature lime / chartreuse tech accent family */
+  --color-accent: #c2f24a;
+  --color-emerald: #84cc16;
+  --color-lime: #a3e635;
+
+  /* Foreground text */
+  --color-ink: #e9ecea;
+  --color-muted: #8b938f;
+  --color-faint: #5b6360;
+
+  /* Semantic */
+  --color-pos: #a3e635;
+  --color-neg: #f87171;
+  --color-warn: #fbbf24;
+
+  /* Typography */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Radii */
+  --radius-card: 16px;
+
+  /* Custom shadows */
+  --shadow-card: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 18px 40px -24px rgba(0, 0, 0, 0.8);
+  --shadow-glow: 0 0 0 1px rgba(194, 242, 74, 0.22),
+    0 0 44px -10px rgba(194, 242, 74, 0.4);
+
+  /* Animations */
+  --animate-glow-drift: glow-drift 18s ease-in-out infinite alternate;
+  --animate-marquee: marquee 38s linear infinite;
+  --animate-shimmer: shimmer 2.4s ease-in-out infinite;
+  --animate-dot-drift: dot-drift 30s linear infinite;
+  --animate-dot-pulse: dot-pulse 14s ease-in-out infinite;
+}
+
+@keyframes dot-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    /* 2 tiles (2 × 22px) keeps the grid seamless as it drifts */
+    background-position: 44px 44px;
+  }
+}
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes glow-drift {
+  0% {
+    transform: translate3d(-6%, -3%, 0) scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate3d(6%, 4%, 0) scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Base
+---------------------------------------------------------------------------- */
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-base);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: rgba(194, 242, 74, 0.24);
+    color: #ffffff;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  /* Focus ring */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Textures & surfaces
+---------------------------------------------------------------------------- */
+@layer utilities {
+  /* Fine dot grid */
+  .bg-dot-grid {
+    background-image: radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px
+    );
+    background-size: 22px 22px;
+  }
+
+  /* Lime-tinted dot grid — the "apex" accent flow layer */
+  .bg-dot-grid-accent {
+    background-image: radial-gradient(
+      circle at center,
+      rgba(194, 242, 74, 0.16) 1px,
+      transparent 1px
+    );
+    background-size: 22px 22px;
+  }
+
+  /* Soft radial mask so the dotted layer gradients in toward the center and
+     eases out toward the edges (apex-style flow). */
+  .mask-radial-soft {
+    -webkit-mask-image: radial-gradient(
+      ellipse 95% 72% at 50% 28%,
+      black 30%,
+      transparent 80%
+    );
+    mask-image: radial-gradient(
+      ellipse 95% 72% at 50% 28%,
+      black 30%,
+      transparent 80%
+    );
+  }
+
+  /* Hairline graph grid */
+  .bg-line-grid {
+    background-image: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0.035) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.035) 1px,
+        transparent 1px
+      );
+    background-size: 56px 56px;
+  }
+
+  /* Subtle grain overlay */
+  .noise-overlay {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  }
+
+  /* Glassy translucent surface */
+  .glass {
+    background-color: color-mix(in oklab, var(--color-surface) 72%, transparent);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+
+  /* Radial fade mask helpers */
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent);
+    mask-image: linear-gradient(to bottom, black 55%, transparent);
+  }
+  .mask-fade-x {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      black 12%,
+      black 88%,
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black 12%,
+      black 88%,
+      transparent
+    );
+  }
+
+  /* Lime text gradient for emphasis numerals */
+  .text-gradient-accent {
+    background: linear-gradient(135deg, #eaffc2 0%, #c2f24a 48%, #84cc16 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+/* Respect reduced motion globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
