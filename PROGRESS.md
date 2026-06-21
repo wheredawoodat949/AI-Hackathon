@@ -90,8 +90,10 @@ functions so `make test` stays green on any machine. Don't add them at module to
       `Sam3VideoModel`/`Sam3VideoProcessor` API (`transformers>=5.12.1`). It now adds all configured
       prompts to one session/pass, labels objects through `prompt_to_obj_ids`, and converts HF's
       zero-based frame indices to the repo's one-based contract. The Colab notebook removes stale
-      `HF_TOKEN`, trims/downscales a bounded 10-second clip before `load_video()`, and logs the full
-      console. **Next: confirm the access smoke test, run the real clip, and attach the complete
+      token variables, verifies the exact newly pasted token with `whoami`, force-downloads
+      `config.json` and `processor_config.json` with that token before invoking Transformers,
+      trims/downscales a bounded 10-second clip before `load_video()`, and logs the full console.
+      **Next: confirm the access smoke test, run the real clip, and attach the complete
       `outputs/sam_local_console.txt`.** `sam_api.py` remains the paid fallback.
 
 **GPU access — CONFIRMED (Slack + live.hackberkeley.org, 2026-06-20):** hackathon provides none;

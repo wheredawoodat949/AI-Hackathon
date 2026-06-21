@@ -39,6 +39,7 @@ Reference (HF model card, Sam3VideoModel "Pre-loaded Video Inference"):
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Sequence
 
 import numpy as np
@@ -78,9 +79,13 @@ class SamLocalBackend:
         # T4 (Colab free tier, compute capability 7.5) doesn't support bfloat16 well —
         # the model card defaults to bf16 (assumes Ampere+); we use fp16 instead.
         self._dtype = torch.float16
+        token = os.environ.get("HF_TOKEN") or None
+        hub_kwargs = {"token": token} if token else {}
         try:
-            self._model = Sam3VideoModel.from_pretrained(self.repo_id).to(self.device, dtype=self._dtype)
-            self._processor = Sam3VideoProcessor.from_pretrained(self.repo_id)
+            self._model = Sam3VideoModel.from_pretrained(self.repo_id, **hub_kwargs).to(
+                self.device, dtype=self._dtype
+            )
+            self._processor = Sam3VideoProcessor.from_pretrained(self.repo_id, **hub_kwargs)
         except Exception as exc:  # noqa: BLE001 - surface the most likely cause, then re-raise
             hint = (
                 "  -> 'Can't load image processor': your in-memory transformers is too OLD.\n"
@@ -88,7 +93,8 @@ class SamLocalBackend:
                 "       pip install -U 'transformers>=5.12.1'\n"
                 if "image processor" in str(exc).lower()
                 else "  1. Request access: https://huggingface.co/facebook/sam3 (can be denied/delayed)\n"
-                "  2. Authenticate: huggingface_hub.login(token=...) or set HF_TOKEN.\n"
+                "  2. Authenticate and set the newly verified token as HF_TOKEN.\n"
+                "  3. Run the notebook's direct config.json/processor_config.json access check.\n"
             )
             raise RuntimeError(
                 f"Could not load {self.repo_id} from Hugging Face.\n{hint}"

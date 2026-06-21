@@ -14,13 +14,23 @@ Pick this up if Colab hits a wall (quota exhausted, weights won't load, session
 keeps disconnecting) — it's a clean fallback that needs no GPU at all:
 
 1. Sign up at [fal.ai](https://fal.ai), create an API key.
-2. Add `FAL_KEY=<key>` to `.env` (copy from `.env.example` if you haven't).
-3. `pip install fal-client` (already in `requirements.txt`).
-4. Set `sam.backend: api` in `config.yaml`, or pass `--backend api` directly:
+2. Add a payment method and create a `FAL_KEY`. Budget only a small test run first.
+3. Add `FAL_KEY=<key>` to `.env` (copy from `.env.example` if you haven't). `.env` is
+   gitignored; never paste the key into a notebook output or commit it.
+4. `pip install fal-client` (already in `requirements.txt`).
+5. Download match 117093 and trim a short clip so the first paid call stays bounded:
    ```bash
-   python -m src.tracking.demo --backend api --video data/videos/<clip>.mp4
+   python -m src.data.download --match 117093
+   mkdir -p data/clips
+   ffmpeg -y -ss 0 -i data/videos/<the_117093_file>.mp4 -t 10 \
+     -vf scale=1280:-2 -an data/clips/117093_10s_1280.mp4
    ```
-5. **This path has never been live-tested** (no key was available when it was
+6. Set `sam.backend: api` in `config.yaml`, or pass `--backend api` directly:
+   ```bash
+   python -m src.tracking.demo --backend api --video data/clips/117093_10s_1280.mp4
+   ```
+7. Capture and keep the complete console output. **This path has never been live-tested**
+   (no key was available when it was
    built) — the first real run is the actual test. Watch the console: it'll
    tell you whether fal returned structured per-frame boxes or only the masked
    video. If only the video, that's still a legitimate demo artifact; tighten

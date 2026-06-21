@@ -86,9 +86,10 @@ Free, real CUDA, 16GB VRAM — clears SAM 3.1's ~4GB floor easily; our only phys
 model card (`Sam3VideoModel`/`Sam3VideoProcessor`) — not a third-party wrapper. Promptable
 Concept Segmentation accepts a list of prompts and tracks them in one video pass, returning
 `prompt_to_obj_ids` for labeling. The backend converts Transformers' zero-based frame indices
-to the repository's one-based contract. It uses fp16 on the T4. The notebook removes a stale
-`HF_TOKEN`, verifies `transformers>=5.12.1`, creates a bounded 10-second/1280px clip, and captures
-the full inference console in `outputs/sam_local_console.txt`.
+to the repository's one-based contract. It uses fp16 on the T4. The notebook removes stale token
+variables, verifies the exact pasted token and both gated processor configuration files, checks
+`transformers>=5.12.1`, creates a bounded 10-second/1280px clip, and captures the full inference
+console in `outputs/sam_local_console.txt`.
 **Caveat (untested live):** the real inference call still needs to complete end-to-end on Colab.
 If access stalls, don't wait — switch to B or C below.
 
