@@ -184,3 +184,29 @@ record only observed behavior.
 
 **Blocked on / open questions:** Live validation needs `REDIS_URL`. Phase 3 still needs a GPU
 and `ROBOFLOW_API_KEY`. Phase 6–8 scope still needs user confirmation.
+
+---
+
+## 2026-06-21 — basketball — Phase 4 Arize implementation (Codex)
+
+**What changed:** Replaced the Arize no-op with an adapter for the current official `arize`
+8.35 streaming ML API. Detection records log class/confidence plus track/frame context; a
+separate tracker-health model logs ID-swap rate with per-frame counts and mean confidence.
+Asynchronous sends are bounded and explicitly flushed. Added validation dataclasses, safe
+disabled/error behavior, SDK-protocol tests, optional model-name environment settings, and pinned
+the runtime dependency to the compatible v8 range.
+
+**Current state / what works:** The adapter imports and its exact `log_stream` argument shape are
+tested against the installed Arize 8.35 SDK without making network calls. Complete suite:
+`25 passed, 2 skipped`; Ruff clean. No hosted telemetry or dashboard result is claimed because
+no Arize credentials are available in this environment.
+
+**How to run it right now:** Set `sponsors.arize: true`, configure `ARIZE_API_KEY` and
+`ARIZE_SPACE_ID` in `.env`, call `src.obs.arize.init(cfg)`, log `DetectionTelemetry` and
+`FrameTelemetry` records, then call `flush()`/`close()` at clip completion.
+
+**Next step for whoever picks this up:** Wire these calls into the basketball runner, calculate
+observed ID-swap rate from frame-to-frame assignments, and validate in a real Arize Space.
+
+**Blocked on / open questions:** Hosted validation needs `ARIZE_API_KEY` and `ARIZE_SPACE_ID`.
+Phase 3 still needs GPU + Roboflow credentials. Phase 6–8 remains unconfirmed.

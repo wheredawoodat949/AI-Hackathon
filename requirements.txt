@@ -38,7 +38,7 @@ accelerate
 
 # --- Phase 3: sponsors (optional; only needed when toggled on in config.yaml) ---
 sentry-sdk>=2.0
-arize>=7.0
+arize>=8.35,<9
 redis>=5.0
 
 # --- Dev / notebook ---
