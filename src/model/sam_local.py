@@ -1,16 +1,17 @@
-<<<<<<< HEAD
 """Self-hosted SAM 3.1 backend via the Ultralytics package (CLAUDE.md §4).
 
-This runs the SAM 3 weights IN-PROCESS on the local CUDA device — which is what
-you get on a Colab GPU runtime or any GPU box. It implements the `SamBackend`
-protocol using Ultralytics' `SAM3VideoSemanticPredictor`, the text-prompted
-detect+track interface for Promptable Concept Segmentation over video.
+Runs the SAM 3 weights IN-PROCESS on the local CUDA device — what you get on a
+Colab GPU runtime or any GPU box. Implements the `SamBackend` protocol using
+Ultralytics' `SAM3VideoSemanticPredictor`, the text-prompted detect+track
+interface for Promptable Concept Segmentation over video. Heavy imports
+(ultralytics/torch) are deferred to the first `track()` call, so this module
+imports cleanly on any machine — only constructing the predictor needs the GPU stack.
 
 Prereqs (do these on the GPU box / Colab, NOT the laptop):
   1. pip install -U ultralytics            # SAM 3 needs ultralytics >= 8.3.237
   2. Request access + download weights:    https://huggingface.co/facebook/sam3
-     SAM 3 weights (`sam3.pt`) are GATED and NOT auto-downloaded — place the file
-     in the repo root or set `sam.weights` / SAM3_WEIGHTS to its path.
+     SAM 3 weights (`sam3.pt`) are GATED and NOT auto-downloaded — set
+     `sam.weights` in config.yaml (or place `sam3.pt` in the repo root).
   3. If prediction errors on `clip`, install the correct package:
          pip install git+https://github.com/openai/CLIP.git
 
@@ -26,11 +27,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Any, Sequence
 
-import numpy as np
-
-from src.model.sam_backend import Detection, FrameResult
+from src.model.sam_backend import Detection, FrameResult, TrackResult
 
 DEFAULT_WEIGHTS = "sam3.pt"
 
@@ -38,20 +37,14 @@ DEFAULT_WEIGHTS = "sam3.pt"
 class SamLocalBackend:
     """Run SAM 3.1 weights locally (Colab/GPU box) via Ultralytics."""
 
-    def __init__(
-        self,
-        weights: str | Path = DEFAULT_WEIGHTS,
-        *,
-        device: str = "cuda",
-        conf: float = 0.25,
-        imgsz: int = 640,
-        half: bool = True,
-    ) -> None:
-        self.weights = str(weights)
-        self.device = device
-        self.conf = conf
-        self.imgsz = imgsz
-        self.half = half
+    def __init__(self, cfg: Any) -> None:
+        self.cfg = cfg
+        sam_cfg = getattr(cfg, "raw", {}).get("sam", {}) if cfg is not None else {}
+        self.weights = str(sam_cfg.get("weights", DEFAULT_WEIGHTS))
+        self.device = getattr(cfg, "device", "cuda")
+        self.conf = float(sam_cfg.get("conf", 0.25))
+        self.imgsz = int(sam_cfg.get("imgsz", 640))
+        self.half = bool(sam_cfg.get("half", True))
         self._predictor = None  # lazily built on first track() call
 
     # -- construction ----------------------------------------------------------
@@ -69,7 +62,7 @@ class SamLocalBackend:
     def _build_predictor(self):
         try:
             from ultralytics.models.sam import SAM3VideoSemanticPredictor
-        except ImportError as exc:  # pragma: no cover
+        except ImportError as exc:  # pragma: no cover - exercised only on the GPU box
             raise ImportError(
                 "ultralytics (>=8.3.237) is required for the local SAM 3 backend.\n"
                 "  pip install -U ultralytics"
@@ -91,32 +84,34 @@ class SamLocalBackend:
 
     def track(
         self,
-        video_path: str | Path,
-        prompts: list[str],
+        video_path: str,
+        prompts: Sequence[str],
         *,
-        max_frames: Optional[int] = None,
-        include_masks: bool = False,
-    ) -> Iterator[FrameResult]:
+        max_objects: int | None = None,
+    ) -> TrackResult:
         if self._predictor is None:
             self._predictor = self._build_predictor()
 
-        results = self._predictor(source=str(video_path), text=list(prompts), stream=True)
+        prompts = list(prompts)
+        results = self._predictor(source=str(video_path), text=prompts, stream=True)
         for frame_index, r in enumerate(results):
-            if max_frames is not None and frame_index >= max_frames:
-                break
-            yield _to_frame_result(r, frame_index, prompts, include_masks)
+            yield _to_frame_result(r, frame_index, prompts, max_objects)
+
+    def close(self) -> None:
+        self._predictor = None
 
 
-def _to_frame_result(r, frame_index: int, prompts: list[str], include_masks: bool) -> FrameResult:
-    """Convert one Ultralytics Results object into our FrameResult."""
-    height, width = (int(r.orig_shape[0]), int(r.orig_shape[1])) if getattr(r, "orig_shape", None) else (0, 0)
+def _to_frame_result(
+    r, frame_index: int, prompts: Sequence[str], max_objects: int | None
+) -> FrameResult:
+    """Convert one Ultralytics Results object into our FrameResult (bbox = x, y, w, h)."""
+    import numpy as np  # lazy: only needed when actually decoding model results
+
     boxes = getattr(r, "boxes", None)
     if boxes is None or len(boxes) == 0:
-        return FrameResult(frame_index=frame_index, width=width, height=height, detections=())
+        return FrameResult(frame_index=frame_index, detections=())
 
     names = getattr(r, "names", None)  # {cls_index: label}
-    masks_xy = getattr(r, "masks", None)
-
     xyxy = boxes.xyxy.cpu().numpy()
     cls = boxes.cls.cpu().numpy().astype(int) if boxes.cls is not None else np.zeros(len(xyxy), int)
     conf = boxes.conf.cpu().numpy() if boxes.conf is not None else np.ones(len(xyxy))
@@ -128,80 +123,24 @@ def _to_frame_result(r, frame_index: int, prompts: list[str], include_masks: boo
 
     dets: list[Detection] = []
     for i in range(len(xyxy)):
-        label = _label_for(int(cls[i]), names, prompts)
-        mask = None
-        if include_masks and masks_xy is not None and masks_xy.data is not None and i < len(masks_xy.data):
-            mask = masks_xy.data[i].cpu().numpy().astype(bool)
+        if max_objects is not None and len(dets) >= max_objects:
+            break
         x1, y1, x2, y2 = (float(v) for v in xyxy[i])
         dets.append(
             Detection(
                 instance_id=int(ids[i]),
-                label=label,
+                label=_label_for(int(cls[i]), names, prompts),
+                bbox=(x1, y1, x2 - x1, y2 - y1),  # xyxy -> x, y, w, h
+                mask=None,
                 score=float(conf[i]),
-                bbox_xyxy=(x1, y1, x2, y2),
-                mask=mask,
             )
         )
-    return FrameResult(
-        frame_index=frame_index, width=width, height=height, detections=tuple(dets)
-    )
+    return FrameResult(frame_index=frame_index, detections=tuple(dets))
 
 
-def _label_for(cls_index: int, names, prompts: list[str]) -> str:
+def _label_for(cls_index: int, names, prompts: Sequence[str]) -> str:
     if isinstance(names, dict) and cls_index in names:
         return str(names[cls_index])
     if 0 <= cls_index < len(prompts):
         return prompts[cls_index]
     return f"class_{cls_index}"
-=======
-"""Self-hosted SAM 3.1 backend (runs weights on our GPU).
-
-Implements the SamBackend interface. Heavy deps (torch, the SAM package) are
-imported lazily inside methods so this module imports cleanly on any machine —
-only constructing/using the backend requires the GPU stack.
-
-Role A (tracking lead) fills in `track()`. Everything it needs is already typed
-by the interface; return per-frame FrameResult(Detection(...)) streaming.
-"""
-from __future__ import annotations
-
-from typing import Any, Sequence
-
-from src.model.sam_backend import TrackResult
-
-
-class SamLocalBackend:
-    """SAM 3.1 with locally-loaded weights. Requires a CUDA GPU."""
-
-    def __init__(self, cfg: Any) -> None:
-        self.cfg = cfg
-        self._model = None  # lazily loaded in _ensure_model()
-
-    def _ensure_model(self) -> None:
-        if self._model is not None:
-            return
-        # Defer heavy imports + GPU check until we actually load weights.
-        from src.utils.gpu import require_gpu
-
-        device = require_gpu()  # fails loud if no CUDA (CLAUDE.md §2)
-        # TODO(Role A): load SAM 3.1 weights onto `device` and assign self._model.
-        raise NotImplementedError(
-            "SamLocalBackend weight loading not implemented yet. "
-            f"(device={device}) Load SAM 3.1 here, then implement track()."
-        )
-
-    def track(
-        self,
-        video_path: str,
-        prompts: Sequence[str],
-        *,
-        max_objects: int | None = None,
-    ) -> TrackResult:
-        self._ensure_model()
-        # TODO(Role A): run promptable concept segmentation + video tracking,
-        # yielding FrameResult(frame_index, (Detection(...), ...)) per frame.
-        raise NotImplementedError("SamLocalBackend.track() not implemented yet.")
-
-    def close(self) -> None:
-        self._model = None
->>>>>>> origin/main

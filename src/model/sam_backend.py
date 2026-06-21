@@ -1,82 +1,37 @@
-<<<<<<< HEAD
-"""SAM backend interface + datatypes (CLAUDE.md §4).
-
-ALL downstream code (tracking, pitch, eval, frontend) depends ONLY on the types
-and `SamBackend` protocol here — never on a concrete backend. A factory in
-`src.model.get_backend()` reads `config.yaml` (`sam.backend: local | api`) and
-returns the right implementation, so we can run SAM 3.1 self-hosted (Colab/GPU
-box) or behind a hosted endpoint without touching anything downstream.
-
-Contract (CLAUDE.md §4):
-    backend.track(video_path, prompts) -> Iterator[FrameResult]
-where each FrameResult yields per-frame detections of {instance_id, label,
-bbox, foot point, (optional) mask} with persistent instance_id across frames.
-
-The `foot_xy` (bottom-middle of the image bbox) is the point Phase 2 feeds
-through the homography to get on-pitch (x, y) in meters — it matches how the
-SoccerTrack v2 GSR ground truth stores positions (bbox_pitch bottom-middle).
-=======
 """SAM 3.1 backend abstraction (CLAUDE.md §4) — the architectural lynchpin.
 
 We don't yet know if SAM 3.1 runs self-hosted on our GPU or via a hosted API, so
 ALL downstream code (tracking, pitch, eval) depends ONLY on the `SamBackend`
 interface and the `Detection`/`FrameResult` data shapes below — never on a
-concrete backend. Swap local<->api by flipping `sam.backend` in config.yaml.
+concrete backend. Swap local<->api<->replay by flipping `sam.backend` in config.yaml.
 
     from src.model import get_backend
-    backend = get_backend()                      # reads config.yaml: local | api
+    backend = get_backend()                      # reads config.yaml: local | api | replay
     for fr in backend.track(video_path, ["soccer player", "goalkeeper"]):
         for det in fr.detections:
-            det.instance_id, det.bbox, det.label, det.mask
+            det.instance_id, det.bbox, det.label, det.foot_xy
 
 Reference behavior: SAM 3.1 takes simple noun-phrase prompts ("soccer player",
 "goalkeeper", "referee", "sports ball") and returns masks + persistent IDs for
 every matching instance, tracked across frames. It does NOT handle complex
 referring expressions, and inference cost scales ~linearly with tracked objects.
->>>>>>> origin/main
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-<<<<<<< HEAD
-from pathlib import Path
-from typing import Iterator, Optional, Protocol, runtime_checkable
-
-import numpy as np
-=======
 from typing import TYPE_CHECKING, Any, Iterator, Protocol, Sequence, runtime_checkable
 
 if TYPE_CHECKING:  # heavy/optional types only for static checkers, never at runtime
     import numpy as np
->>>>>>> origin/main
 
 
 @dataclass(frozen=True)
 class Detection:
-<<<<<<< HEAD
-    """One tracked instance in one frame."""
-
-    instance_id: int                      # persistent track ID across frames
-    label: str                            # which prompt matched ("soccer player", ...)
-    score: float                          # detection confidence [0, 1]
-    bbox_xyxy: tuple[float, float, float, float]  # pixels (x1, y1, x2, y2)
-    mask: Optional[np.ndarray] = None     # HxW bool mask, only if include_masks=True
-
-    @property
-    def foot_xy(self) -> tuple[float, float]:
-        """Bottom-middle of the bbox in pixels — the point to project to pitch."""
-        x1, _y1, x2, y2 = self.bbox_xyxy
-        return ((x1 + x2) / 2.0, y2)
-
-    @property
-    def center_xy(self) -> tuple[float, float]:
-        x1, y1, x2, y2 = self.bbox_xyxy
-        return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
-=======
     """One tracked instance in one frame.
 
-    `mask` is a boolean HxW array (or RLE) when available, else None. We keep it
-    `Any` so this module imports with zero heavy deps (numpy is optional here).
+    `bbox` is (x, y, w, h) in image pixels. `mask` is a boolean HxW array (or RLE)
+    when available, else None — kept `Any` so this module imports with zero heavy
+    deps (numpy is optional here).
     """
 
     instance_id: int
@@ -84,56 +39,40 @@ class Detection:
     bbox: tuple[float, float, float, float]  # x, y, w, h in image pixels
     mask: "np.ndarray | Any | None" = None
     score: float | None = None
->>>>>>> origin/main
+
+    @property
+    def foot_xy(self) -> tuple[float, float]:
+        """Bottom-middle of the bbox in pixels — the point Phase 2 projects to pitch.
+
+        Matches how SoccerTrack v2 GSR ground truth stores positions (bbox bottom-middle).
+        """
+        x, y, w, h = self.bbox
+        return (x + w / 2.0, y + h)
+
+    @property
+    def center_xy(self) -> tuple[float, float]:
+        x, y, w, h = self.bbox
+        return (x + w / 2.0, y + h / 2.0)
 
 
 @dataclass(frozen=True)
 class FrameResult:
-<<<<<<< HEAD
-    """All tracked detections in a single video frame."""
-
-    frame_index: int                      # 0-based index within the processed clip
-    width: int                            # source frame width  (px)
-    height: int                           # source frame height (px)
-    detections: tuple[Detection, ...] = field(default_factory=tuple)
-
-    def of_label(self, label: str) -> tuple[Detection, ...]:
-        return tuple(d for d in self.detections if d.label == label)
-=======
     """All instances SAM tracked in a single video frame."""
 
     frame_index: int
     detections: tuple[Detection, ...] = field(default_factory=tuple)
 
+    def of_label(self, label: str) -> tuple[Detection, ...]:
+        return tuple(d for d in self.detections if d.label == label)
+
 
 # A TrackResult is just an iterator of per-frame results — lets backends stream
 # frames lazily instead of materializing a whole 4K video in memory.
 TrackResult = Iterator[FrameResult]
->>>>>>> origin/main
 
 
 @runtime_checkable
 class SamBackend(Protocol):
-<<<<<<< HEAD
-    """The only surface downstream code is allowed to depend on."""
-
-    def track(
-        self,
-        video_path: str | Path,
-        prompts: list[str],
-        *,
-        max_frames: Optional[int] = None,
-        include_masks: bool = False,
-    ) -> Iterator[FrameResult]:
-        """Detect + track every instance of each text prompt across the video.
-
-        Yields one FrameResult per processed frame, in order. Implementations
-        should stream (yield as they go) so callers can render/score without
-        holding the whole video in memory. `max_frames` caps work for fast
-        iteration; `include_masks` attaches per-detection masks (memory-heavy).
-        """
-        ...
-=======
     """The one interface downstream code is allowed to depend on."""
 
     def track(
@@ -154,7 +93,7 @@ class SamBackend(Protocol):
 def get_backend(cfg: Any | None = None) -> SamBackend:
     """Factory: return the configured backend (`sam.backend` in config.yaml).
 
-    Downstream code calls this and nothing else. Adding a 3rd backend = add a
+    Downstream code calls this and nothing else. Adding a 4th backend = add a
     module + one branch here.
     """
     from src.config import load_config
@@ -177,4 +116,3 @@ def get_backend(cfg: Any | None = None) -> SamBackend:
     raise ValueError(
         f"Unknown sam.backend={backend!r} in config.yaml. Expected 'local', 'api', or 'replay'."
     )
->>>>>>> origin/main
