@@ -1,176 +1,209 @@
 # CLAUDE.md
 
-> Project context for Claude Code. Read this fully before doing anything. When in doubt, prefer the **simplest thing that produces a visible result**, then iterate. We are on a 24-hour hackathon clock.
+> Project context for Claude Code. Read this fully before doing anything. When in doubt, prefer the **simplest thing that produces a visible result**, then iterate. Cal Hacks 2026 — judging is imminent.
 
 ---
 
 ## 0. TL;DR for Claude
 
-We are building a **soccer game-state analysis pipeline**: take full-pitch panoramic match video, run **Meta SAM 3.1** to segment + track every player/goalkeeper/referee, and produce a live **2D tactical minimap** plus event analysis. We evaluate our tracker against ground-truth annotations and instrument the whole thing for reliability and observability.
+We are building **real-time multi-agent tracking of athletes (+ ball) in sports footage**,
+packaged for sponsor tracks. The soccer line (Vincent, `sam_model_vincent`) already works:
+pretrained detector + tracker + team classification on a soccer clip. **Current task: replicate
+that on basketball footage** — but Basketball-51 (the dataset named in the kickoff) has **no
+detection labels**, so the path is "run an existing pretrained detector + tracker on basketball
+clips," not "train a basketball model from scratch." See §4.
 
-- **Core model:** Meta SAM 3.1 (Promptable Concept Segmentation — text prompts like `"soccer player"` return masks + persistent IDs for *all* instances, with built-in video tracking).
-- **Dataset:** SoccerTrack v2 — 10 full-length 4K panoramic matches with per-frame Game State Reconstruction (GSR) ground truth and Ball Action Spotting (BAS) labels.
-- **Primary deliverable (now):** Python + Jupyter notebook that runs the pipeline on one match and saves output videos/minimaps.
-- **Secondary deliverable (end):** a thin web frontend showing video + live minimap side-by-side. **Build everything so this bolt-on is easy — keep logic out of notebooks and in importable modules.**
-- **Deadline reality:** Devpost draft due **Sunday 11 AM** (hard requirement to be judged), edits until 12 PM, judging 1–3 PM. A working narrow demo beats an ambitious broken one.
-
----
-
-## 1. Repositories
-
-- **Our project repo (work happens here):** https://github.com/wheredawoodat949/AI-Hackathon
-- **Dataset repo (reference + loaders + eval scripts):** https://github.com/AtomScott/SoccerTrack-v2
-- **Dataset homepage / docs:** https://atomscott.github.io/SoccerTrack-v2/
-- **Dataset on Hugging Face (canonical download):** https://huggingface.co/datasets/atomscott/soccertrack-v2
-- **Dataset paper:** https://arxiv.org/abs/2508.01802
-
-**Do not commit dataset video files or model weights to our repo.** Add `data/`, `*.mp4`, `*.pt`, `*.pth`, `weights/`, `outputs/` to `.gitignore`. Large artifacts stay local on the GPU box.
-
----
-
-## 2. Environment
-
-- **Compute:** JupyterLab running inside VSCode, with GPU access. Assume CUDA is available; verify with `torch.cuda.is_available()` before any heavy run and FAIL LOUDLY if it's False.
-- **Python:** use a virtual environment. Pin versions in `requirements.txt`.
-- **Notebooks are for demoing and eyeballing, NOT for core logic.** All reusable logic lives in `src/` as importable modules. Notebooks import from `src/` and call functions. This is what makes the frontend bolt-on cheap later.
-- Keep a single `config.yaml` (or `src/config.py`) for all paths, match IDs, prompt strings, and sponsor keys. No hardcoded paths scattered around.
-
-### Secrets
-- All API keys (SAM endpoint, Sentry DSN, Redis URL, Arize keys, Anthropic key) load from a `.env` file via `python-dotenv`. **`.env` is gitignored. Never commit keys.** Provide a committed `.env.example` listing required variable names with empty values.
-
----
-
-## 3. Repository layout (create this in our repo)
-
-```
-.
-├── CLAUDE.md                 # this file
-├── README.md
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── config.yaml
-├── src/
-│   ├── data/                 # SoccerTrack v2 loading + GSR/BAS parsing
-│   │   ├── download.py
-│   │   └── loader.py
-│   ├── model/                # SAM 3.1 abstraction (see §4)
-│   │   ├── sam_backend.py     # abstract interface
-│   │   ├── sam_local.py       # self-hosted impl
-│   │   └── sam_api.py         # hosted-API impl
-│   ├── tracking/             # tracker wrapper, ID management
-│   ├── pitch/                # homography → 2D pitch coords, minimap render
-│   ├── events/               # BAS classification (stretch)
-│   ├── eval/                 # HOTA + comparison vs GSR ground truth
-│   ├── obs/                  # Sentry + Arize instrumentation
-│   ├── store/                # Redis embedding store + semantic search
-│   └── pipeline.py           # end-to-end orchestration entrypoint
-├── notebooks/
-│   └── demo.ipynb            # the thing we run for judges
-├── outputs/                  # saved videos/minimaps (gitignored)
-└── frontend/                 # empty for now; web app at the end
-```
+- **Soccer (done, reference):** Roboflow's `sports` toolkit (vendored under `sports/`) +
+  3 pretrained checkpoints (ball/player/pitch detection) + `supervision`'s ByteTrack, run via
+  `sports/examples/soccer/main.py --mode {PLAYER_DETECTION,TEAM_CLASSIFICATION,...}`. **Not a
+  custom-trained model** — Vincent did not train anything; he ran Roboflow's pretrained example.
+- **Basketball (current task):** no labeled detection dataset exists for this sport in-repo or in
+  Basketball-51. Path A (do first): generic pretrained person+ball detector (COCO classes, e.g.
+  Ultralytics YOLO — already built and verified at `feat/tracking-ashmeet`'s `yolo_backend.py`)
+  + ByteTrack on Basketball-51 clips → one annotated demo video. Path B (after A): fine-tune from
+  a *separately sourced labeled* basketball detection set (Basketball-51 itself can't supply
+  labels). See `ONBOARDING.md` for full findings and open questions.
+- **Sponsor tracks in scope:** Redis (live state/streaming), Pika Labs (synthetic training
+  imagery + demo visuals), Arize (ML observability/drift). Anthropic/Claude Code is the build
+  layer (meta).
+- **Decided 2026-06-21:** for basketball, use Roboflow's `sports` toolkit **directly** (its
+  `main.py`-style runner, `team.py` classifier, annotators) rather than wrapping it behind the
+  separate `SamBackend` interface from `feat/tracking-ashmeet`. Caveat: Roboflow's pretrained
+  `football-player-detection.pt`/`football-ball-detection.pt` are soccer-domain-trained and may
+  not generalize to basketball broadcast footage — for Path A, swap in a generic COCO
+  `person`/`sports ball` detector (e.g. plain Ultralytics YOLO weights) through the same runner
+  pattern, not the football-specific checkpoints.
+- **Basketball-51 access:** via `kagglehub.dataset_download("sarbagyashakya/basketball-51-dataset")`,
+  run in the Colab notebook (Kaggle auth already works there). No local Kaggle credentials exist
+  on the dev machine — don't assume `kaggle.json` is available outside Colab.
+- **"The old repo" = this repo's own `CLAUDE.md`** as it existed on `sam_model_vincent` before this
+  basketball rewrite (the SoccerTrack-v2/SAM-3.1 pipeline doc) — not a separate project. Its
+  conventions (environment/secrets pattern, branch-ownership table, phase structure) are folded
+  into this file already.
 
 ---
 
-## 4. SAM 3.1 — model abstraction (IMPORTANT)
+## 1. Repositories & branches
 
-We do **not** yet know if we'll run SAM 3.1 self-hosted on our GPU or via a hosted API. **Build so it does not matter.**
+- **This repo:** https://github.com/wheredawoodat949/AI-Hackathon
+- **`sam_model_vincent`** — Vincent's branch, **the base of truth for the soccer artifact**.
+  Contains `Soccer_1.ipynb`, `segment_videos_with_segment_anything_3.ipynb` (generic SAM3
+  tutorial, not sport-specific), and the vendored `sports/` (Roboflow) toolkit. Never push to it
+  directly without asking.
+- **`basketball`** — branched off `sam_model_vincent`. Where this task's work happens.
+- **`feat/tracking-ashmeet`** — a sibling soccer-tracking line (SoccerTrack-v2 dataset, different
+  from Vincent's). Independently hit the same SAM 3.1 gating wall and pivoted to Ultralytics
+  YOLO + ByteTrack (`src/model/yolo_backend.py`, verified working on Colab T4). Worth reusing for
+  basketball Path A — not yet merged anywhere.
+- **The old reference repo** — separate, unrelated, READ-ONLY. **Path not yet confirmed** — ask
+  before reading/borrowing from it.
 
-- Define an abstract interface in `src/model/sam_backend.py`, e.g. a `SamBackend` protocol with methods like:
-  - `track(video_path, prompts: list[str]) -> TrackResult` where `TrackResult` yields per-frame `{instance_id, mask, bbox, label}`.
-- Provide two implementations behind the same interface: `sam_local.py` (self-hosted weights) and `sam_api.py` (hosted endpoint).
-- A factory reads `config.yaml` (`sam_backend: local | api`) and returns the right one. **All downstream code depends only on the interface, never on a concrete backend.**
-- Start with whichever is fastest to get a single working frame, then swap freely.
-- Reference behavior: SAM 3.1 takes **text/noun-phrase prompts** (`"soccer player"`, `"goalkeeper"`, `"referee"`, `"sports ball"`) and returns masks + unique IDs for every matching instance, tracked across video frames. Note: inference cost scales linearly with number of tracked objects, and SAM 3.1 does NOT handle complex referring expressions — keep prompts to simple noun phrases.
+**Do not commit dataset video files or model weights to this repo.** `data/`, `*.mp4`, `*.pt`,
+`*.pth`, `weights/`, `outputs/`, `synthetic/` are gitignored. Large artifacts stay in Drive/Kaggle
+cache, not git. (Verified: no `.pt`/`.mp4`/`data.yaml` has ever been committed on any branch —
+Vincent's checkpoints are `gdown`'d at runtime, not committed.)
 
----
-
-## 5. Dataset facts Claude must respect
-
-> **VERIFIED 2026-06-20 by listing the real Drive mirror — these supersede earlier assumptions.**
-
-- **Source = the link-public Google Drive mirror** (folder `1N2Qx2qkFgRtpbHitl2Vh6sLVYGgqkWwn`), the default in `config.yaml` (`dataset.source: drive`). `gdown` reads it with **no auth**. HF (`atomscott/soccertrack-v2`) is **gated** (401 w/o `HF_TOKEN`) and kept only as `--source hf`. Pull ONE match: `python -m src.data.download --match 117093` (`--no-videos` for the fast annotations-only path). Never bulk-download all 4K video.
-- **Real match IDs** (NOT the docs' assumed 117091–117100): `117092, 117093, 118575, 118576, 118577, 118578, 128057, 128058, 132831, 132877`. **80/10/10 split** (in config): train = first 8, eval `132831`, test `132877`. Dev match `117093`. There is **no documented held-out set** in the mirror; the eval/test split is our own.
-- **GSR is SoccerNet/COCO format** (`{info, images, annotations, categories}`), parsed by `src/data/loader.py`. Object annotations (categories 1–4,7 = player/goalkeeper/referee/ball/other) carry `track_id`, `attributes{role, jersey, team, player_id}`, `bbox_image{x,y,w,h}`, `bbox_pitch{…x_bottom_middle,y_bottom_middle}` (foot position on pitch, meters). This is our tracking ground truth — eval against it from day one.
-- **BAS = `{match_id, fps, actions:[…]}`** with **UPPERCASE** labels (`"PASS"`, `"HIGH PASS"`) normalized to the 12 canonical classes by `loader.normalize_bas_label`. 12 classes: Pass, Drive, Header, High Pass, Out, Cross, Throw In, Shot, Ball Player Block, Player Successful Tackle, Free Kick, Goal. Vocabulary for event detection + Redis search.
-- **The mirror has `gsr/ bas/ raw/ videos/` but NO `mot/`.** → Eval with **GSR HOTA** (`python -m src.evaluation.gs_hota`), not MOT HOTA. Wrapper at `src/eval/hota.py`. Install the scorer on the GPU box: `pip install git+https://github.com/AtomScott/SoccerTrack-v2`. Do NOT reimplement metrics.
-- License: dataset is CC BY 4.0 (attribution required, commercial OK); code is MIT. No player names — IDs are jersey-number based. Safe for a public Devpost.
-- **Compute/training:** see [`docs/COMPUTE.md`](docs/COMPUTE.md). SAM 3.1 is zero-shot (no training needed for the demo); the GPU cost is *inference* on 4K video. NERSC/JGI is off-policy for this project — use the team GPU box or a sponsor cloud.
-
----
-
-## 6. Sponsor integrations (all 4 in scope; design for a cheap 5th)
-
-Each integration lives in its own module and is **toggleable via config** so it can never break the core pipeline. Integrations consume pipeline output; they don't sit on the critical path.
-
-- **Sentry** (`src/obs/`): error + performance monitoring. Alert on dropped frames, model timeouts, and tracker ID-swap events (detected by comparing ID continuity vs GSR). Reliability is judged — instrument from hour one, not bolted on.
-- **Arize** (`src/obs/`): log every tracking/event prediction; build an eval set from GSR ground truth; show a measurable accuracy delta (HOTA) before/after any tuning. The number must be real and citable.
-- **Redis** (`src/store/`): embed player track segments (appearance + trajectory) and store as vectors; semantic search keyed on BAS action vocabulary ("show every cross from the left", "find similar attacking sequences"). Must be "beyond caching" — vector search / retrieval.
-- **Anthropic / Claude Code** (`meta`): Claude Code is our build + orchestration layer. Framing for the prize: accessible tactical analysis for amateur/university teams (the dataset is amateur matches) who can't afford pro analytics.
-
-**Adding a sponsor pattern:** create `src/<area>/<sponsor>.py`, expose one `init(config)` and one integration function, register it behind a config flag, and document it here. Never let a new integration touch `pipeline.py`'s core path.
+### Current branch ownership
+| Branch | Owner | What |
+|---|---|---|
+| `sam_model_vincent` | Vincent | Soccer artifact (Roboflow `sports` toolkit) — base of truth, don't push directly |
+| `basketball` | (this task) | Basketball pivot, branched off `sam_model_vincent` |
+| `feat/tracking-ashmeet` | Ashmeet | Separate SoccerTrack-v2 line; `yolo_backend.py` is the reusable piece |
+| `feat/pitch-eval-shaaz` | Shaaz | Training notebook (25+10 epoch) — not yet inspected for basketball relevance |
+| `feat/events-demo-dawood` | Dawood | No work yet |
 
 ---
 
-## 7. Working agreement for Claude Code
+## 2. Environment & secrets
 
-- **Commit small and often** with clear messages. One logical change per commit.
-- **Branch per role/phase** (see the kickoff prompt's roles). Open PRs into `main`; don't push broken code to `main`.
-- After each meaningful step, **run something and show the result** (a frame, a number, a saved clip). Visible progress > silent scaffolding.
-- If a dependency or download stalls, **say so and propose a fallback** rather than waiting. (e.g., single-match download, lower-res proxy, fewer tracked classes.)
-- **Never fabricate eval numbers.** If eval isn't wired yet, say "not measured yet."
-- Keep a running `PROGRESS.md` with what works, what's stubbed, and the current demo command. Update it at the end of every phase.
-- Respect the deadline ordering in §8. If behind, cut from the bottom (stretch) up — never cut Phase 0–2.
-- Attribute the dataset (CC BY 4.0) in README and the Devpost.
-
----
-
-## 8. Phases (priority order — do NOT skip ahead)
-
-**Phase 0 — Foundation (everyone, first ~1–2h).** Repo scaffold per §3, `.gitignore`, `.env.example`, `config.yaml`, venv + `requirements.txt`, GPU check, single-match download kicked off in background, dataset loader reads one GSR frame and prints entities.
-
-**Phase 1 — Core tracking (de-risk the hard thing).** SAM 3.1 backend abstraction + one working implementation; run text-prompted tracking on a short clip; save an annotated output video with masks + IDs. Success = a saved clip showing tracked players.
-
-**Phase 2 — Pitch mapping + eval.** Homography from panoramic frame → 2D pitch coords; render the live minimap; wire HOTA eval vs GSR ground truth and print a real number. Success = minimap video + a HOTA score.
-
-**Phase 3 — Sponsor layer.** Sentry instrumentation, Arize logging + before/after number, Redis embedding store + one working semantic query. Each behind a config flag.
-
-**Phase 4 — Event analysis (stretch).** BAS classifier on the 12 classes; feed events into Redis search and into a simple highlight-clip exporter.
-
-**Phase 5 — Polish + frontend (end).** `frontend/` web app: video + live minimap side-by-side, reading saved pipeline outputs. Demo script, README, Devpost text. Rehearse the 5-minute pitch.
+- **Compute:** all model code runs in Google Colab (GPU). Notebooks mount Drive, pull data via
+  Kaggle/`kagglehub`, save weights/outputs back to Drive and/or the repo. Don't assume a local GPU.
+- **Config:** keep paths, dataset IDs, and sponsor keys out of hardcoded strings — prefer a single
+  config source (`config.yaml`/`src/config.py` pattern from the soccer line, or equivalent) as the
+  basketball pipeline takes shape.
+- **Secrets:** all API keys (Kaggle, Pika, Redis, Arize, Anthropic) load from `.env` via
+  `python-dotenv`, or from Colab secrets (`google.colab.userdata`) inside notebooks. **`.env` is
+  gitignored — never commit keys.** Keep `.env.example` listing required variable names with empty
+  values.
 
 ---
 
-## 9. What "done" looks like for the demo
+## 3. Verified model facts (corrected — do not assume YOLOv5/custom-trained)
 
-One command (or one notebook run) that: loads a match clip → tracks all players with SAM 3.1 → renders the 2D minimap → prints a HOTA accuracy number vs ground truth → has Sentry/Arize live → answers one Redis semantic query. Everything else is bonus.
+> Corrected 2026-06-21 by reading `sam_model_vincent`'s actual notebooks/files — see
+> `ONBOARDING.md` §2 for the full derivation.
+
+- **Vincent's soccer detector is NOT a custom-trained YOLOv5 model.** It's
+  [Roboflow's `sports`](https://github.com/roboflow/sports) example pipeline running **3
+  separate pretrained checkpoints** (`football-ball-detection.pt`, `football-player-detection.pt`,
+  `football-pitch-detection.pt`, ~137–140MB each, Ultralytics-compatible, pinned
+  `ultralytics==8.2.0`/`>=8.3.0`), downloaded via `gdown` from Roboflow's own Drive links — never
+  committed to git, never trained by Vincent.
+- **No `best.pt`, no `data.yaml`, no training step exists anywhere in this pipeline.** It is
+  100% pretrained-checkpoint inference.
+- **`sports/examples/soccer/main.py` supports 6 modes** (confirmed in source):
+  `PITCH_DETECTION`, `PLAYER_DETECTION`, `BALL_DETECTION`, `PLAYER_TRACKING`,
+  `TEAM_CLASSIFICATION`, `RADAR`.
+- **Team classification works and is sport-agnostic:** `sports/sports/common/team.py` uses SigLIP
+  embeddings + UMAP + KMeans on player crops — directly reusable for basketball.
+- **Pitch/radar features are soccer-specific** (`sports/sports/configs/soccer.py` bakes in pitch
+  geometry) — **do not expect these to transfer to basketball** without a basketball court
+  config, which doesn't exist yet.
+- **SAM 3.1 is gated and was a dead end for both Vincent and us.** `facebook/sam3` on Hugging
+  Face requires approved access (slow/uncertain) AND `transformers` from git main (the stable
+  wheel is missing `Sam3ImageProcessor`). Don't reach for SAM 3.1 for basketball — use a
+  pretrained detector instead (Path A).
+- **Basketball-51** (`sarbagyashakya/basketball-51-dataset` on Kaggle): 10,311 six-second
+  action-recognition clips, labeled ONLY by shot outcome (2pt/3pt/FT/mid × make/miss). **No
+  player/ball bounding boxes.** Low-res 320×240. Cannot train a detector directly on it — see §4.
 
 ---
 
-## 10. Team & branch ownership
+## 4. The Basketball-51 label gap — read before writing training code
 
-Four roles, four `feat/<role>-<member>` branches off `main` (random assignment, 2026-06-20).
-Each owns its `src/` packages and the matching phase; open PRs into `main`, don't push broken
-code to `main`. Stub modules with `TODO(Role X)` markers are already scaffolded on every branch.
+Basketball-51 has no detection labels, so:
+- **Path A (do this first, no training):** run an existing pretrained `person`+`sports ball`
+  detector (Ultralytics YOLO via COCO classes is the proven, ungated, free option — see
+  `feat/tracking-ashmeet`'s `src/model/yolo_backend.py`) + ByteTrack on selected Basketball-51
+  clips. Produces an annotated demo video with zero training. Priority deliverable.
+- **Path B (after A, if time allows):** fine-tune from a *separately sourced labeled* basketball
+  detection set (e.g. a Roboflow basketball dataset, or pseudo-labeled Basketball-51 frames +
+  hand review). Needs a real `data.yaml`. Only do this once Path A works.
+- Pick cleaner/higher-quality Basketball-51 clips; 320×240 looks rough on a big screen — consider
+  upscaling or just picking visually clean clips for the demo.
+- **If the dataset or Kaggle access is missing when you need it, STOP and ask — do not fabricate
+  data or assume credentials exist.** (As of this writing, no `~/.kaggle/kaggle.json` exists on
+  this machine.)
 
-| Branch | Role | Owner | Owns (`src/`) | Phase |
-|--------|------|-------|---------------|-------|
-| `feat/tracking-ashmeet` | A — Tracking lead | **ashmeet** | `model/` (SAM backend impl), `tracking/` | 1 |
-| `feat/pitch-eval-shaaz` | B — Pitch & eval lead | **shaaz** | `pitch/`, `eval/` | 2 |
-| `feat/sponsors-vincent` | C — Sponsor/infra lead | **vincent** | `obs/`, `store/`, `.env` plumbing | 3 |
-| `feat/events-demo-dawood` | D — Events/demo/frontend lead | **dawood** | `events/`, `notebooks/`, `frontend/`, Devpost | 4–5 |
+---
 
-The SAM interface (`src/model/sam_backend.py`) and data loader (`src/data/`) are shared
-foundation on `main` — coordinate changes to them rather than forking behavior.
+## 5. Sponsor integrations (Redis, Pika Labs, Arize — document each clearly for judges)
 
-### Dev workflow (Phase 0.5 scaffolding)
-```bash
-make setup     # venv + editable install (.venv) with dev tools
-make test      # pytest — import-smoke + config/loader/gpu (no GPU/data needed)
-make lint      # ruff
-make gpu       # CUDA check
-make frame MATCH=117093   # download + print a real GSR frame
-```
-Heavy/optional imports (torch, cv2, sentry, arize, redis, requests) MUST stay deferred inside
-functions so `make test` (the import-smoke guard) stays green on any machine.
+Each integration lives in its own module, is **toggleable via config**, and never sits on the
+critical path (pipeline still runs with all three off).
+
+- **Redis** (`src/store/`): live state + speed. Cache latest per-track positions; push tracking
+  results via Streams/pub-sub to a demo dashboard; optionally cache inference results keyed by
+  frame hash. Currently a no-op stub (`src/store/redis_store.py`) inherited from the soccer scaffold
+  — needs real wiring for basketball.
+- **Pika Labs** (net-new — nothing exists yet): generate synthetic basketball imagery (courts,
+  jerseys, lighting, angles) to augment training data for Path B; secondary use — polished
+  demo/intro visuals. Keep generated assets in a clearly labeled `synthetic/` folder, separate
+  from real data, and flag which `data.yaml` splits include synthetic images.
+- **Arize** (`src/obs/`): log per-detection class, confidence, tracked-agent count, track
+  stability over time; surface drift signals (soccer-trained vs basketball-trained, real vs
+  synthetic-augmented). Currently a no-op stub (`src/obs/arize.py`) — needs real wiring.
+- **Anthropic / Claude Code** (meta): the build + orchestration layer for this whole project.
+
+**Adding a sponsor pattern:** create `src/<area>/<sponsor>.py`, expose one `init(config)` + one
+integration function, register behind a config flag, document it here and in `ONBOARDING.md`.
+
+---
+
+## 6. Git workflow — strict rules
+
+- **Branch off `sam_model_vincent`** for basketball work (already done: `basketball` branch).
+  It is the base of truth for the soccer artifact — never push to it directly without asking.
+- **Never touch the old reference repo.** Read-only, if/when its path is confirmed.
+- **Maintain `UPDATE.md` at the repo root, updated on every push.** Append (never overwrite) a
+  dated entry with: What changed / Current state / How to run it right now / Next step / Blocked
+  on. Treat this as part of the commit, not an afterthought.
+- **Small, working, clearly-messaged commits.** Push the working branch regularly.
+- **No destructive git operations** (force-push, branch delete, history rewrite) without asking
+  first.
+- **Never fabricate data, weights, or eval numbers.** If something's missing (dataset, credentials,
+  a notebook), stop and ask — don't guess or invent a placeholder that looks real.
+
+---
+
+## 7. Phases
+
+**Phase 0 — Orientation & ground truth** (this phase). Branch map, model facts verified against
+real files (not assumptions), `ONBOARDING.md` + initial `UPDATE.md`, this `CLAUDE.md` draft.
+No training yet.
+
+**Phase 1 — Basketball demo video (Path A).** Pull Basketball-51 (needs Kaggle creds), run an
+existing pretrained detector + ByteTrack on a few clean clips, produce one annotated basketball
+tracking video in the style of Vincent's soccer demo. Priority deliverable.
+
+**Phase 2 — Basketball detection data (Path B prep).** Source/build a *labeled* basketball
+detection set (Basketball-51 itself has no labels). Build `data.yaml`, sanity-check, split
+train/val. Halt-and-ask if blocked.
+
+**Phase 3 — Train basketball model.** Fine-tune from a pretrained checkpoint → `weights/basketball_best.pt`,
+log real metrics, re-run tracking for a sharper demo video.
+
+**Phase 4 — Sponsor wiring.** Pika Labs synthetic augmentation, Redis live state/streaming, Arize
+observability — each independently demoable.
+
+**Phase 5 — Agentic layer + polish.** Build the agentic analysis layer (Arize-driven) on top,
+end-to-end demo, and a one-paragraph "how this qualifies for each sponsor track" writeup in
+`UPDATE.md`.
+
+---
+
+## 8. What "done" looks like for Phase 1
+
+One command (or one Colab run) that: loads a Basketball-51 clip → tracks every player + the ball
+with a pretrained detector + ByteTrack → saves an annotated output video, matching the visual
+style of Vincent's soccer demo. Everything in §4 Path B and §5 is bonus on top of this.
