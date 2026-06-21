@@ -6,6 +6,8 @@
 /data/
 /outputs/
 /weights/
+/runs/
+/synthetic/
 *.mp4
 *.avi
 *.mov

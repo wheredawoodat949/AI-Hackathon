@@ -56,6 +56,7 @@ sponsors:
   sentry: false         # src/obs/  — error + perf monitoring, ID-swap alerts
   arize:  false         # src/obs/  — prediction logging + HOTA before/after
   redis:  false         # src/store/ — track-segment vectors + semantic search
+  pika:   false         # src/synthetic/ — synthetic media; never auto-added to training
   anthropic: false      # build/orchestration layer (meta)
 
 # --- Difficulty / run knobs ---

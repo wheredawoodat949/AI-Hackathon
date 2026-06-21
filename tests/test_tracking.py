@@ -63,6 +63,7 @@ def test_sam_api_backend_requires_fal_key(monkeypatch):
         next(iter(backend.track("dummy.mp4", cfg.sam_prompts)))
 
 
+@pytest.mark.skipif(not _have_dev_data(), reason="replay factory loads dev match data")
 def test_get_backend_replay_is_default():
     from src.model import get_backend
     from src.model.replay import GsrReplayBackend

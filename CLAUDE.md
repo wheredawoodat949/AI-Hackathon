@@ -1,6 +1,10 @@
 # CLAUDE.md
 
 > Project context for Claude Code. Read this fully before doing anything. When in doubt, prefer the **simplest thing that produces a visible result**, then iterate. Cal Hacks 2026 — judging is imminent.
+>
+> **Working with a second agent (Codex)?** Read [`AGENT_TASKS.md`](AGENT_TASKS.md) next — it has
+> the live task assignments, current phase status, and what's blocked on the user. This file is
+> the stable reference; `AGENT_TASKS.md` and `UPDATE.md` are the moving parts.
 
 ---
 
@@ -176,29 +180,37 @@ integration function, register behind a config flag, document it here and in `ON
 
 ---
 
-## 7. Phases
+## 7. Phases (0–8) — full task breakdown + ownership in `AGENT_TASKS.md`
 
-**Phase 0 — Orientation & ground truth** (this phase). Branch map, model facts verified against
-real files (not assumptions), `ONBOARDING.md` + initial `UPDATE.md`, this `CLAUDE.md` draft.
-No training yet.
+**Phases 6–8 are a proposed extension** (not pre-defined before this point) — confirm with the
+user if they meant something different by "all the way to phase 8."
 
-**Phase 1 — Basketball demo video (Path A).** Pull Basketball-51 (needs Kaggle creds), run an
-existing pretrained detector + ByteTrack on a few clean clips, produce one annotated basketball
-tracking video in the style of Vincent's soccer demo. Priority deliverable.
+**Phase 0 — Orientation & ground truth.** ✅ Done. Branch map, model facts verified against real
+files (not assumptions), `ONBOARDING.md` + `UPDATE.md` + this file.
 
-**Phase 2 — Basketball detection data (Path B prep).** Source/build a *labeled* basketball
-detection set (Basketball-51 itself has no labels). Build `data.yaml`, sanity-check, split
-train/val. Halt-and-ask if blocked.
+**Phase 1 — Basketball demo video (Path A).** ✅ Code done (`sports/examples/basketball/main.py`,
+`Basketball_1.ipynb`); GPU/real-footage validation pending (needs Colab + the user's Kaggle auth).
 
-**Phase 3 — Train basketball model.** Fine-tune from a pretrained checkpoint → `weights/basketball_best.pt`,
-log real metrics, re-run tracking for a sharper demo video.
+**Phase 2 — Basketball detection data (Path B prep).** ✅ Scaffolded (`data.yaml` points at a
+verified real Roboflow Universe dataset); actual download pending a Roboflow API key.
+
+**Phase 3 — Train basketball model.** Fine-tune from a pretrained checkpoint →
+`weights/basketball_best.pt`, log real metrics, re-run tracking for a sharper demo video.
 
 **Phase 4 — Sponsor wiring.** Pika Labs synthetic augmentation, Redis live state/streaming, Arize
-observability — each independently demoable.
+observability — each independently demoable, each toggleable, none on the critical path.
 
-**Phase 5 — Agentic layer + polish.** Build the agentic analysis layer (Arize-driven) on top,
-end-to-end demo, and a one-paragraph "how this qualifies for each sponsor track" writeup in
-`UPDATE.md`.
+**Phase 5 — Agentic layer + polish.** Build the agentic analysis layer (Arize-driven) on top.
+
+**Phase 6 — Cross-sport polish.** Soccer + basketball demos presented as one coherent product.
+
+**Phase 7 — Devpost writeup + pitch prep.** One paragraph per sponsor track grounded in what was
+actually built (not aspirational), best demo clips compiled.
+
+**Phase 8 — Final QA + submission rehearsal.** Full pipeline from a clean checkout, timed pitch.
+
+See `AGENT_TASKS.md` for the detailed task list, current status per phase, and what's assigned
+to which agent.
 
 ---
 
