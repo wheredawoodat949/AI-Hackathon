@@ -11,19 +11,21 @@ for reliability (Sentry), eval/observability (Arize), and semantic search (Redis
 See [`CLAUDE.md`](CLAUDE.md) for the full architecture, dataset facts, phase
 ordering, and working agreement. See [`PROGRESS.md`](PROGRESS.md) for live status.
 
-## Quickstart (GPU box)
+## Quickstart
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # only needed for HF source / sponsors (Drive needs nothing)
-
-python -m src.utils.gpu                              # CUDA check (fails loud if no GPU)
-python -m src.data.download --match 117093 --no-videos   # Drive mirror, annotations only
-python -m src.data.inspect  --match 117093 --half 1      # print a real GSR frame
+make setup                      # venv + editable install (.venv) with dev tools
+source .venv/bin/activate
+make test                       # ruff + pytest (no GPU/data needed) — should be green
+make gpu                        # CUDA check (fails loud if no GPU)
+make frame MATCH=117093         # download from Drive mirror + print a real GSR frame
 ```
-Data comes from the link-public **Google Drive mirror** by default (no auth). Switch to the
-gated HF source with `--source hf` (needs `HF_TOKEN`). Or open `notebooks/demo.ipynb`
-(imports from `src/`, holds no logic).
+Or the explicit commands: `pip install -r requirements.txt`, then
+`python -m src.data.download --match 117093 [--no-videos]` and
+`python -m src.data.inspect --match 117093`. Data comes from the link-public **Google Drive
+mirror** by default (no auth); use `--source hf` for the gated HF copy (`HF_TOKEN`).
+`notebooks/demo.ipynb` imports from `src/` and holds no logic.
+
+**Compute / GPUs:** see [docs/COMPUTE.md](docs/COMPUTE.md). **Team & branches:** see CLAUDE.md §10.
 
 ## Layout
 ```

@@ -88,13 +88,15 @@ We do **not** yet know if we'll run SAM 3.1 self-hosted on our GPU or via a host
 
 ## 5. Dataset facts Claude must respect
 
-- **Do NOT download all 10 matches.** ~900 minutes of 4K is too much. Pull ONE match for dev using the repo's helper: `./scripts/download.sh --dest ./data --match <ID>`. Prefer a daytime match for cleaner demo visuals.
-- **GSR annotations** (per frame): `track_id`, `player_id`, `role` (player/goalkeeper/referee/other), `jersey_number`, `team_side` (left/right/null), `x`,`y` (pitch coords in meters). **This is our tracking ground truth — wire eval against it from day one, not at the end.**
-- **BAS annotations:** 12 action classes (Pass, Drive, Header, High Pass, Out, Cross, Throw In, Shot, Ball Player Block, Player Successful Tackle, Free Kick, Goal) with global timestamps + the acting player_id. This is the vocabulary for event detection AND for Redis semantic search.
-- **MOT annotations** in MOTChallenge format (`gt/gt.txt`) for tracking eval.
-- The repo ships **eval scripts**: `src.evaluation.gs_hota`, `src.evaluation.bas_map`, `src.evaluation.mot_hota`. Use the repo's HOTA implementation — do NOT reimplement metrics.
-- Held-out test matches: 117099, 117100. Develop on others; never tune on the held-out set.
-- License: dataset is CC BY 4.0 (attribution required, commercial OK); code is MIT. No player names in data — IDs are jersey-number based. Safe for a public Devpost.
+> **VERIFIED 2026-06-20 by listing the real Drive mirror — these supersede earlier assumptions.**
+
+- **Source = the link-public Google Drive mirror** (folder `1N2Qx2qkFgRtpbHitl2Vh6sLVYGgqkWwn`), the default in `config.yaml` (`dataset.source: drive`). `gdown` reads it with **no auth**. HF (`atomscott/soccertrack-v2`) is **gated** (401 w/o `HF_TOKEN`) and kept only as `--source hf`. Pull ONE match: `python -m src.data.download --match 117093` (`--no-videos` for the fast annotations-only path). Never bulk-download all 4K video.
+- **Real match IDs** (NOT the docs' assumed 117091–117100): `117092, 117093, 118575, 118576, 118577, 118578, 128057, 128058, 132831, 132877`. **80/10/10 split** (in config): train = first 8, eval `132831`, test `132877`. Dev match `117093`. There is **no documented held-out set** in the mirror; the eval/test split is our own.
+- **GSR is SoccerNet/COCO format** (`{info, images, annotations, categories}`), parsed by `src/data/loader.py`. Object annotations (categories 1–4,7 = player/goalkeeper/referee/ball/other) carry `track_id`, `attributes{role, jersey, team, player_id}`, `bbox_image{x,y,w,h}`, `bbox_pitch{…x_bottom_middle,y_bottom_middle}` (foot position on pitch, meters). This is our tracking ground truth — eval against it from day one.
+- **BAS = `{match_id, fps, actions:[…]}`** with **UPPERCASE** labels (`"PASS"`, `"HIGH PASS"`) normalized to the 12 canonical classes by `loader.normalize_bas_label`. 12 classes: Pass, Drive, Header, High Pass, Out, Cross, Throw In, Shot, Ball Player Block, Player Successful Tackle, Free Kick, Goal. Vocabulary for event detection + Redis search.
+- **The mirror has `gsr/ bas/ raw/ videos/` but NO `mot/`.** → Eval with **GSR HOTA** (`python -m src.evaluation.gs_hota`), not MOT HOTA. Wrapper at `src/eval/hota.py`. Install the scorer on the GPU box: `pip install git+https://github.com/AtomScott/SoccerTrack-v2`. Do NOT reimplement metrics.
+- License: dataset is CC BY 4.0 (attribution required, commercial OK); code is MIT. No player names — IDs are jersey-number based. Safe for a public Devpost.
+- **Compute/training:** see [`docs/COMPUTE.md`](docs/COMPUTE.md). SAM 3.1 is zero-shot (no training needed for the demo); the GPU cost is *inference* on 4K video. NERSC/JGI is off-policy for this project — use the team GPU box or a sponsor cloud.
 
 ---
 
@@ -143,3 +145,32 @@ Each integration lives in its own module and is **toggleable via config** so it 
 ## 9. What "done" looks like for the demo
 
 One command (or one notebook run) that: loads a match clip → tracks all players with SAM 3.1 → renders the 2D minimap → prints a HOTA accuracy number vs ground truth → has Sentry/Arize live → answers one Redis semantic query. Everything else is bonus.
+
+---
+
+## 10. Team & branch ownership
+
+Four roles, four `feat/<role>-<member>` branches off `main` (random assignment, 2026-06-20).
+Each owns its `src/` packages and the matching phase; open PRs into `main`, don't push broken
+code to `main`. Stub modules with `TODO(Role X)` markers are already scaffolded on every branch.
+
+| Branch | Role | Owner | Owns (`src/`) | Phase |
+|--------|------|-------|---------------|-------|
+| `feat/tracking-ashmeet` | A — Tracking lead | **ashmeet** | `model/` (SAM backend impl), `tracking/` | 1 |
+| `feat/pitch-eval-shaaz` | B — Pitch & eval lead | **shaaz** | `pitch/`, `eval/` | 2 |
+| `feat/sponsors-vincent` | C — Sponsor/infra lead | **vincent** | `obs/`, `store/`, `.env` plumbing | 3 |
+| `feat/events-demo-dawood` | D — Events/demo/frontend lead | **dawood** | `events/`, `notebooks/`, `frontend/`, Devpost | 4–5 |
+
+The SAM interface (`src/model/sam_backend.py`) and data loader (`src/data/`) are shared
+foundation on `main` — coordinate changes to them rather than forking behavior.
+
+### Dev workflow (Phase 0.5 scaffolding)
+```bash
+make setup     # venv + editable install (.venv) with dev tools
+make test      # pytest — import-smoke + config/loader/gpu (no GPU/data needed)
+make lint      # ruff
+make gpu       # CUDA check
+make frame MATCH=117093   # download + print a real GSR frame
+```
+Heavy/optional imports (torch, cv2, sentry, arize, redis, requests) MUST stay deferred inside
+functions so `make test` (the import-smoke guard) stays green on any machine.
