@@ -34,10 +34,32 @@ each with gsr+bas+raw+videos). **No `mot/` in the mirror** → use GSR HOTA (`gs
 - [x] `src/data/inspect.py` — prints one GSR frame's entities.
 - [ ] **Verify on GPU box:** run the 4 commands above; confirm CUDA + a printed GSR frame.
 
-**Stubbed / not yet built:** `src/model` (SAM backend — Phase 1), `src/tracking`, `src/pitch`,
-`src/events`, `src/eval`, `src/obs`, `src/store`, `src/pipeline.run()`. `frontend/` empty.
+**Stubbed / not yet built:** `src/pitch`, `src/events`, `src/eval`, `src/obs`, `src/store`,
+`src/pipeline.run()`. `frontend/` empty.
 
 **Eval status:** not measured yet (HOTA wired in Phase 2 via the dataset's `src.evaluation.gs_hota`).
+
+## Phase 1 — Core tracking  ⏳ code written, UNVERIFIED (needs Colab GPU run)
+Compute decision: **Google Colab is the GPU box** (free T4 16GB runs SAM 3, 848M params).
+This laptop CANNOT run SAM 3 (no usable Python; GPU is a 2GB Quadro K2100M) — code only here.
+- [x] `src/model/sam_backend.py` — `SamBackend` protocol + `Detection`/`FrameResult` types
+      (`foot_xy` = bbox bottom-middle = the point Phase 2 projects to pitch meters).
+- [x] `src/model/sam_local.py` — SAM 3.1 via Ultralytics `SAM3VideoSemanticPredictor`
+      (text-prompted detect+track). Lazy imports; fails loud if `sam3.pt` missing (gated).
+- [x] `src/model/sam_api.py` — hosted-endpoint stub (NotImplemented; local is the path).
+- [x] `src/model/__init__.py` — `get_backend(cfg)` factory reading `sam.backend`.
+- [x] `src/tracking/annotate.py` — draw tracked boxes+IDs onto a clip -> annotated mp4.
+- [x] `notebooks/colab_run.ipynb` — end-to-end Colab runner (GPU check -> clone -> install
+      -> gated weights -> download 1 match -> cut clip -> track -> tracks.json + annotated mp4).
+- [x] `config.yaml`: `sam.backend: local` + `sam.weights: sam3.pt`; `requirements.txt` += ultralytics.
+- [ ] **RUN IT on Colab:** accept SAM 3 HF access, run the notebook, confirm a saved clip with
+      tracked players + a non-zero detection count. (Watch: tiny players in 4K — we downscale to
+      1920w in the notebook; may need tiling to recover recall.)
+
+## Known gated/manual steps for the GPU run
+- SAM 3 weights `sam3.pt`: request access at https://huggingface.co/facebook/sam3, then HF token.
+- If SAM errors on `clip`: `pip install git+https://github.com/openai/CLIP.git` (in the notebook).
+- Private repo clone in Colab needs a GitHub token (prompted in notebook cell 2).
 
 ## Dataset facts in use
 - Dev match: **117093** (exists in mirror; canonical example in the docs).

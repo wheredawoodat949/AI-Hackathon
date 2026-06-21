@@ -34,7 +34,8 @@ dataset:
 # --- SAM 3.1 backend selection (see src/model/) ---
 # Factory reads this; ALL downstream code depends only on the SamBackend interface.
 sam:
-  backend: api          # local | api  (UNDECIDED — both impls behind one interface)
+  backend: local        # local | api  — DECIDED: run SAM 3 weights on the Colab/GPU runtime
+  weights: sam3.pt      # gated; download from https://huggingface.co/facebook/sam3 (see notebooks/colab_run.ipynb)
   # Simple noun-phrase prompts only. SAM 3.1 does NOT do referring expressions.
   prompts:
     - "soccer player"

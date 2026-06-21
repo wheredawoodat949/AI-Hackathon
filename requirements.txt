@@ -11,6 +11,10 @@ numpy>=1.26
 torch>=2.2
 
 # --- Phase 1-2: tracking, video, pitch, minimap ---
+# SAM 3 lives in ultralytics (>=8.3.237). Weights `sam3.pt` are gated + manual:
+#   https://huggingface.co/facebook/sam3  (see notebooks/colab_run.ipynb)
+# Text prompts also need OpenAI CLIP:  pip install git+https://github.com/openai/CLIP.git
+ultralytics>=8.3.237
 opencv-python>=4.9
 pillow>=10.0
 scipy>=1.11
