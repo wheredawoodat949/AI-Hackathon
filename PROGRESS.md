@@ -70,32 +70,28 @@ each with gsr+bas+raw+videos). **No `mot/` in the mirror** → use GSR HOTA (`gs
 **Guard rail:** heavy/optional imports (torch, cv2, sentry, arize, redis, requests) stay deferred inside
 functions so `make test` stays green on any machine. Don't add them at module top level.
 
-## Phase 1 — Core tracking  🟡 in progress (Role A, `feat/tracking-ashmeet`)
+## Phase 1 — Core tracking  🟢 working (Role A, `feat/tracking-ashmeet`)
 - [x] `GsrReplayBackend` (`src/model/replay.py`) — satisfies `SamBackend` by replaying GSR ground
       truth. Runs the whole pipeline with **no GPU**; doubles as the "perfect tracker" eval upper bound.
 - [x] `src/data/video.py` (frame iter, mp4 writer w/ PNG fallback, synthetic canvas) +
-      `src/tracking/visualize.py` (boxes + IDs + role colors).
-- [x] `src/tracking/demo.py` — `python -m src.tracking.demo` renders an annotated clip to `outputs/`.
-- [x] **VERIFIED on Mac (no GPU):** produced `outputs/track_117093_replay.mp4` — 100 frames, 960x376,
-      25 fps; 20 players (green) + 2 keepers (orange) with persistent IDs. Tests: 14/14 green, ruff clean.
-- [x] **`sam_local.py` implemented for real** via 🤗 Transformers `Sam3VideoModel`/`Sam3VideoProcessor`
-      (the official distribution path per the live model card at huggingface.co/facebook/sam3 —
-      weights auto-download via `from_pretrained()` once access is approved, no manual file
-      placement). Runs one full video pass per prompt (PCS finds all instances of ONE concept per
-      call; no documented multi-concept syntax) and merges per-frame results, offsetting instance
-      IDs so prompts never collide. Adapted to our `Detection(bbox=(x,y,w,h))`/`FrameResult` shapes
-      incl. new `foot_xy`/`center_xy` helpers on `Detection` and `of_label()`/`width`/`height` on
-      `FrameResult` (additive, backward compatible). Targets the Colab T4 GPU (fp16, not the model
-      card's default bf16 — T4 is pre-Ampere). **NOT yet live-tested** (access request submitted,
-      awaiting Meta's review as of 2026-06-21) — error paths are unit-tested (18/18 tests), the
-      actual inference call needs a live run + approved access to confirm.
-- [x] **`notebooks/colab_sam_tracking.ipynb`** — full Colab bring-up: GPU check, clone+install,
-      gated SAM3 weight request/download (flags the real risk: access can be denied/delayed),
-      download a real clip, run `--backend local`, preview the output. **Next action: open it in
-      Colab, select the T4 runtime, and run it for real.**
-- [x] **`sam_api.py` (fal.ai) implemented and verified-real but DEFERRED** in favor of Colab — see
-      [docs/DEFERRED.md](docs/DEFERRED.md) for when/how to pick it back up (e.g. if Colab's gated
-      weights access stalls). Credential-check path tested; network path still needs a real FAL_KEY.
+      `src/tracking/visualize.py` (boxes + IDs + role colors). `src/tracking/demo.py` renders a clip.
+- [x] **VERIFIED on Mac (no GPU):** `outputs/track_117093_replay.mp4` — 100 frames, 20 players + 2 keepers.
+- [x] **PRIMARY backend = YOLO (`sam.backend: yolo`, `src/model/yolo_backend.py`).** Ultralytics YOLO +
+      ByteTrack: **ungated, free, weights auto-download, runs on a Colab T4 in seconds**, real boxes +
+      persistent track IDs. Chosen after SAM 3.1's gated weights + git-main-only transformers proved
+      too much friction for the deadline. **VERIFIED on Mac (CPU):** `yolo11n.pt` auto-downloaded with
+      no token, detected 4 people in the test image, our `_to_frame_result` produced correct
+      `Detection`s (id/label/score/bbox/foot_xy). The video `.track()` multi-frame path runs on Colab
+      via `notebooks/colab_yolo_tracking.ipynb` — dead simple (GPU check → install → download clip →
+      `--backend yolo` → preview), no gating/token/restart. **Next: run it on Colab for the real clip.**
+      Tradeoff: YOLO returns COCO `person`/`sports ball` (no role split from the model; recover team/role
+      later via jersey-color k-means, docs/ML_DIRECTIONS.md).
+- [~] **SAM 3.1 backends kept but PARKED.** `sam_local.py` (HF Transformers `Sam3VideoModel`, gated +
+      needs `transformers` from git main) and `sam_api.py` (fal.ai, needs `FAL_KEY` + payment) both
+      implemented behind the same interface — swap in via `sam.backend` if access/keys ever land. Access
+      to `facebook/sam3` was granted but the local path hit a wall (stable transformers lacks
+      `Sam3ImageProcessor`; git-main install + restart friction) so we pivoted to YOLO rather than keep
+      fighting it. `notebooks/colab_sam_tracking.ipynb` documents that path.
 
 **GPU access — CONFIRMED (Slack + live.hackberkeley.org, 2026-06-20):** hackathon provides none;
 RunPod isn't even on the official sponsor-resource list (Slack-only, booth visit needed, not

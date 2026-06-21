@@ -14,6 +14,9 @@ torch>=2.2
 opencv-python>=4.9
 pillow>=10.0
 scipy>=1.11
+# ultralytics: the DEFAULT tracking backend (sam.backend: yolo). Ungated YOLO +
+# ByteTrack, auto-downloads COCO weights, runs on a Colab T4. Only imported when used.
+ultralytics>=8.3
 # requests used by the hosted-SAM (api) backend
 requests>=2.31
 # fal-client: deferred no-GPU SAM 3.1 path (config.yaml sam.backend: api), see

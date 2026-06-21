@@ -56,9 +56,20 @@ needs at most a few GPU-hours. Size your compute ask accordingly.
 
 ---
 
-## 2. Where to get SAM 3.1 inference (ranked, fastest/most-certain first)
+## 2. How we actually run tracking (ranked, most-reliable first)
 
-### A. Google Colab free T4 — PRIMARY, `sam.backend: local`
+### A0. Google Colab free T4 + YOLO — PRIMARY, `sam.backend: yolo` (VERIFIED)
+The reliable path. Ultralytics YOLO + ByteTrack is **ungated, free, auto-downloads its
+weights, and runs on a Colab T4 in seconds**, giving real boxes + persistent track IDs.
+Notebook: `notebooks/colab_yolo_tracking.ipynb` — GPU check → clone+install → download clip
+→ `--backend yolo` → preview. No HF token, no gating, no runtime restart. Verified on a Mac
+(CPU): `yolo11n.pt` auto-downloaded with no token and detections converted to our `Detection`
+objects correctly. Accuracy knobs in `config.yaml`: `sam.yolo_weights` (yolo11n/s/m),
+`sam.conf`. Tradeoff: COCO `person`/`sports ball` only — no role split from the model (recover
+team/role later via jersey-color clustering, see ML_DIRECTIONS.md). **This is why we stopped
+fighting SAM 3.1's gating** — see §A below for the parked SAM path.
+
+### A. (PARKED) Google Colab free T4 + SAM 3.1, `sam.backend: local`
 Free, real CUDA, 16GB VRAM — clears SAM 3.1's ~4GB floor easily; our only physical GPU
 (K1900, ~2GB) doesn't. Notebook: `notebooks/colab_sam_tracking.ipynb`.
 1. Open the notebook in Colab, **Runtime → Change runtime type → T4 GPU**.

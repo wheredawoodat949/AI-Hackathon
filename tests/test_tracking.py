@@ -63,13 +63,59 @@ def test_sam_api_backend_requires_fal_key(monkeypatch):
         next(iter(backend.track("dummy.mp4", cfg.sam_prompts)))
 
 
-def test_get_backend_replay_is_default():
+def test_get_backend_yolo_is_default():
     from src.model import get_backend
-    from src.model.replay import GsrReplayBackend
+    from src.model.yolo_backend import YoloBackend
 
     cfg = load_config()
-    assert cfg.sam_backend == "replay"
-    assert isinstance(get_backend(cfg), GsrReplayBackend)
+    assert cfg.sam_backend == "yolo"
+    assert isinstance(get_backend(cfg), YoloBackend)
+
+
+def test_yolo_prompts_map_to_coco_classes():
+    from src.model.yolo_backend import _PROMPT_TO_COCO
+
+    cfg = load_config()
+    mapped = {_PROMPT_TO_COCO.get(p.lower()) for p in cfg.sam_prompts}
+    assert None not in mapped          # every prompt maps to a COCO class
+    assert mapped == {0, 32}           # person (players/keeper/ref) + sports ball
+
+
+def test_yolo_to_frame_result_converts_boxes():
+    """_to_frame_result handles an Ultralytics-Results-shaped object without ultralytics."""
+    from src.model.yolo_backend import _to_frame_result
+
+    class _Boxes:
+        def __init__(self):
+            self.xyxy = _Arr([[10.0, 20.0, 40.0, 80.0]])
+            self.cls = _Arr([0])
+            self.conf = _Arr([0.9])
+            self.id = _Arr([7])
+
+        def __len__(self):
+            return 1
+
+    class _Arr:
+        def __init__(self, v):
+            self._v = np.asarray(v)
+
+        def cpu(self):
+            return self
+
+        def numpy(self):
+            return self._v
+
+    class _Result:
+        orig_shape = (1504, 3840)
+        names = {0: "person", 32: "sports ball"}
+        boxes = _Boxes()
+
+    fr = _to_frame_result(_Result(), frame_index=5, max_objects=None)
+    assert fr.frame_index == 5 and fr.width == 3840 and fr.height == 1504
+    assert len(fr.detections) == 1
+    d = fr.detections[0]
+    assert d.instance_id == 7 and d.label == "person"
+    assert d.bbox == (10.0, 20.0, 30.0, 60.0) and d.score == 0.9
 
 
 def test_detection_foot_and_center_xy():

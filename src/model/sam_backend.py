@@ -100,6 +100,11 @@ def get_backend(cfg: Any | None = None) -> SamBackend:
 
     cfg = cfg or load_config()
     backend = cfg.sam_backend.lower()
+    if backend == "yolo":
+        # Ungated, free, runs on a Colab T4 — the reliable default for the demo.
+        from src.model.yolo_backend import YoloBackend
+
+        return YoloBackend(cfg)
     if backend == "local":
         from src.model.sam_local import SamLocalBackend
 
@@ -114,5 +119,6 @@ def get_backend(cfg: Any | None = None) -> SamBackend:
 
         return GsrReplayBackend(cfg)
     raise ValueError(
-        f"Unknown sam.backend={backend!r} in config.yaml. Expected 'local', 'api', or 'replay'."
+        f"Unknown sam.backend={backend!r} in config.yaml. "
+        "Expected 'yolo', 'local', 'api', or 'replay'."
     )

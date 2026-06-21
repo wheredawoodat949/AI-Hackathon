@@ -26,10 +26,10 @@ from src.tracking.visualize import draw_detections
 def main() -> None:
     cfg = load_config()
     p = argparse.ArgumentParser(description="Render an annotated tracked clip.")
-    p.add_argument("--backend", default="replay", choices=["replay", "local", "api"])
+    p.add_argument("--backend", default="yolo", choices=["yolo", "replay", "local", "api"])
     p.add_argument("--match", default=cfg.dev_match)
     p.add_argument("--half", type=int, default=1)
-    p.add_argument("--video", default=None, help="Real panorama mp4 (local/api backends).")
+    p.add_argument("--video", default=None, help="Real panorama mp4 (yolo/local/api backends).")
     p.add_argument("--seconds", type=int, default=cfg.clip_seconds)
     p.add_argument("--canvas-scale", type=float, default=0.25,
                    help="Downscale factor for the synthetic canvas (replay mode).")
@@ -52,7 +52,7 @@ def main() -> None:
         cfg.raw["sam"]["backend"] = args.backend
         backend = get_backend(cfg)
         if not args.video:
-            raise SystemExit(f"--backend {args.backend} needs --video <panorama.mp4>")
+            raise SystemExit(f"--backend {args.backend} needs --video <clip.mp4>")
         results = stabilize(backend.track(args.video, cfg.sam_prompts,
                                           max_objects=cfg.max_tracked))
         frames = _overlay_frames(args.video, results, max_frames)

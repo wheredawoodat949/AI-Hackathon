@@ -31,19 +31,23 @@ dataset:
     eval:  ["132831"]   # 10% — model selection / HOTA tuning
     test:  ["132877"]   # 10% — touched only for the final reported number
 
-# --- SAM 3.1 backend selection (see src/model/) ---
+# --- Tracking backend selection (see src/model/) ---
 # Factory reads this; ALL downstream code depends only on the SamBackend interface.
-# Confirmed 2026-06-20 (hackathon Slack + live.hackberkeley.org): no GPUs/credits
-# are provided by the hackathon itself; team's only GPU (K1900, ~2GB Kepler) is
-# below SAM 3.1's ~4GB floor. Current plan: Google Colab's free T4 (16GB, real
-# CUDA) for `local`. `api` (fal.ai, no GPU, ~$0.01/16 frames) is deferred — see
-# docs/DEFERRED.md. `replay` needs zero GPU/cost and is already verified (Phase 1).
+# Backends:
+#   yolo   - Ultralytics YOLO + ByteTrack. UNGATED, free, runs on a Colab T4 in
+#            seconds. The reliable default after SAM 3.1's gated weights + bleeding-
+#            edge transformers proved too much friction for the deadline. (src/model/yolo_backend.py)
+#   local  - SAM 3.1 self-hosted via HF Transformers. Gated (facebook/sam3) + needs
+#            transformers from git main. Kept for if/when access clears. (src/model/sam_local.py)
+#   api    - SAM 3.1 via fal.ai (no GPU, ~$0.01/16 frames, needs FAL_KEY). docs/DEFERRED.md.
+#   replay - GSR ground-truth replay. No GPU/cost. Verified Phase 1; the safety net. (src/model/replay.py)
 sam:
-  backend: replay       # replay | local | api  — see src/model/{replay,sam_local,sam_api}.py
+  backend: yolo         # yolo | local | api | replay
+  yolo_weights: "yolo11n.pt"  # ungated COCO weights, auto-download (yolo11s/m = more accurate)
+  conf: 0.25            # detection confidence threshold (yolo + sam_local)
   fal_model: "fal-ai/sam-3-1/video"   # used by sam_api.py when backend: api (deferred)
-  hf_repo: "facebook/sam3"  # used by sam_local.py when backend: local — gated, auto-downloads
-                             # via from_pretrained() once HF access is approved + authenticated
-  # Simple noun-phrase prompts only. SAM 3.1 does NOT do referring expressions.
+  hf_repo: "facebook/sam3"  # used by sam_local.py when backend: local — gated
+  # Simple noun-phrase prompts (SAM 3.1) / mapped to COCO classes (yolo: person, sports ball).
   prompts:
     - "soccer player"
     - "goalkeeper"
