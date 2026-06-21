@@ -35,12 +35,16 @@ dataset:
 # Factory reads this; ALL downstream code depends only on the SamBackend interface.
 # Confirmed 2026-06-20 (hackathon Slack + live.hackberkeley.org): no GPUs/credits
 # are provided by the hackathon itself; team's only GPU (K1900, ~2GB Kepler) is
-# below SAM 3.1's ~4GB floor. So `api` (fal.ai, no GPU needed, ~$0.01/16 frames)
-# is PRIMARY. `replay` needs zero GPU/cost and is what Phase 1 has verified.
-# Swap to `local` only if a real CUDA GPU (RunPod credits, etc.) materializes.
+# below SAM 3.1's ~4GB floor. Current plan: Google Colab's free T4 (16GB, real
+# CUDA) for `local`. `api` (fal.ai, no GPU, ~$0.01/16 frames) is deferred — see
+# docs/DEFERRED.md. `replay` needs zero GPU/cost and is already verified (Phase 1).
 sam:
   backend: replay       # replay | local | api  — see src/model/{replay,sam_local,sam_api}.py
-  fal_model: "fal-ai/sam-3-1/video"   # used by sam_api.py when backend: api
+  fal_model: "fal-ai/sam-3-1/video"   # used by sam_api.py when backend: api (deferred)
+  weights: "sam3.pt"    # used by sam_local.py when backend: local — gated, see that file's docstring
+  conf: 0.25            # detection confidence threshold (Ultralytics SAM3VideoSemanticPredictor)
+  imgsz: 640
+  half: true            # FP16 — fits comfortably in a Colab T4's 16GB
   # Simple noun-phrase prompts only. SAM 3.1 does NOT do referring expressions.
   prompts:
     - "soccer player"

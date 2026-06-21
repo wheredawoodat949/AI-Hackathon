@@ -5,7 +5,7 @@ Berkeley AI Hackathon. **Read this before burning time chasing clusters** — th
 fastest path is almost always the team GPU box or a sponsor cloud, not a
 DOE supercomputer.
 
-> ## ⚡ DECISION (2026-06-20): use the fal.ai hosted SAM 3.1 API. Here's why.
+> ## ⚡ DECISION (2026-06-20, updated): use Google Colab's free T4 GPU. Here's why.
 > - **The hackathon provides NO GPUs**, confirmed twice: Slack director (`#0-ask-directors`:
 >   *"We unfortunately won't have GPUs. There will be 3 3D printers!"*) AND the official live
 >   site (live.hackberkeley.org) sponsor-resource list — **RunPod isn't even on it** (Slack-only,
@@ -13,15 +13,16 @@ DOE supercomputer.
 >   Soon" prize category**, not a GPU-credit program (also: their chips are AWS Trainium/Neuron,
 >   not CUDA — wrong fit for SAM regardless).
 > - **Our only team GPU is a K1900** (~2009-2013 Kepler-era workstation mobile GPU, ~2GB VRAM) —
->   **below SAM 3.1's ~4GB inference floor.** Self-hosting on it is not viable.
-> - **Verified fix: [fal.ai](https://fal.ai) hosts real SAM 3.1** at `fal-ai/sam-3-1/video` — takes
->   our exact comma-separated text prompts, costs **$0.01 per 16 input frames** (~$0.16 for a
->   10s/25fps clip, a few dollars for a whole match), and needs **zero GPU of ours** — just a
->   `FAL_KEY` (sign up + small payment method). This is now `sam.backend: api` in `config.yaml`,
->   implemented in `src/model/sam_api.py`. **Action: get a FAL_KEY and add it to `.env`.**
-> - `sam.backend: replay` (default right now) needs no GPU and no key at all — it's already
->   verified working (Phase 1). Swap to `api` the moment a FAL_KEY exists; swap to `local` only if
->   a real CUDA GPU (RunPod credits, a teammate's gaming laptop, etc.) shows up later.
+>   **below SAM 3.1's ~4GB inference floor.** Self-hosting on that machine is not viable.
+> - **Current path: Google Colab.** Free T4 runtime (16GB VRAM, real CUDA) clears SAM 3.1's bar
+>   easily and costs nothing. `sam.backend: local` runs there via Ultralytics
+>   (`src/model/sam_local.py`) — see §2.A below for the exact notebook + steps.
+> - **fal.ai hosted SAM 3.1 API is DEFERRED, not abandoned** — verified real and working
+>   (`fal-ai/sam-3-1/video`, ~$0.16 per 10s clip, zero GPU needed), implemented in
+>   `src/model/sam_api.py`. Picking it up is now documented in
+>   [docs/DEFERRED.md](DEFERRED.md) — use it if Colab hits a wall.
+> - `sam.backend: replay` needs no GPU/key at all and is already verified working (Phase 1) — the
+>   safety net if both of the above run out of time.
 > - **Anthropic** gives ~$25–50 Claude API credits/hacker (school email, `#spons-anthropic`) — for
 >   Claude, not a GPU. NERSC/JGI remains off-policy (§3) — don't.
 

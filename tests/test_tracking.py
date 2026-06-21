@@ -70,3 +70,23 @@ def test_get_backend_replay_is_default():
     cfg = load_config()
     assert cfg.sam_backend == "replay"
     assert isinstance(get_backend(cfg), GsrReplayBackend)
+
+
+def test_detection_foot_and_center_xy():
+    d = Detection(instance_id=1, label="player", bbox=(10.0, 20.0, 30.0, 40.0))
+    assert d.center_xy == (25.0, 40.0)
+    assert d.foot_xy == (25.0, 60.0)  # bottom-middle: x + w/2, y + h
+
+
+def test_sam_local_backend_missing_weights_raises_clear_error(tmp_path, monkeypatch):
+    """No sam3.pt on disk -> a clear FileNotFoundError before any GPU/import work."""
+    import dataclasses
+
+    from src.model.sam_local import SamLocalBackend
+
+    cfg = load_config()
+    cfg = dataclasses.replace(cfg, raw={**cfg.raw, "sam": {**cfg.raw["sam"], "weights": "sam3.pt"}})
+    monkeypatch.chdir(tmp_path)  # no sam3.pt here
+    backend = SamLocalBackend(cfg)
+    with pytest.raises(FileNotFoundError, match="huggingface.co/facebook/sam3"):
+        backend._ensure_weights()
