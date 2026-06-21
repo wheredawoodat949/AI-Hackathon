@@ -33,8 +33,14 @@ dataset:
 
 # --- SAM 3.1 backend selection (see src/model/) ---
 # Factory reads this; ALL downstream code depends only on the SamBackend interface.
+# Confirmed 2026-06-20 (hackathon Slack + live.hackberkeley.org): no GPUs/credits
+# are provided by the hackathon itself; team's only GPU (K1900, ~2GB Kepler) is
+# below SAM 3.1's ~4GB floor. So `api` (fal.ai, no GPU needed, ~$0.01/16 frames)
+# is PRIMARY. `replay` needs zero GPU/cost and is what Phase 1 has verified.
+# Swap to `local` only if a real CUDA GPU (RunPod credits, etc.) materializes.
 sam:
-  backend: api          # local | api  (UNDECIDED — both impls behind one interface)
+  backend: replay       # replay | local | api  — see src/model/{replay,sam_local,sam_api}.py
+  fal_model: "fal-ai/sam-3-1/video"   # used by sam_api.py when backend: api
   # Simple noun-phrase prompts only. SAM 3.1 does NOT do referring expressions.
   prompts:
     - "soccer player"

@@ -49,3 +49,24 @@ def test_replay_backend_emits_detections():
     d = first.detections[0]
     assert len(d.bbox) == 4 and d.score == 1.0
     backend.close()
+
+
+def test_sam_api_backend_requires_fal_key(monkeypatch):
+    """No FAL_KEY -> a clear RuntimeError before any network call, not a crash."""
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    monkeypatch.delenv("SAM_API_KEY", raising=False)
+    from src.model.sam_api import SamApiBackend
+
+    cfg = load_config()
+    backend = SamApiBackend(cfg)
+    with pytest.raises(RuntimeError, match="FAL_KEY"):
+        next(iter(backend.track("dummy.mp4", cfg.sam_prompts)))
+
+
+def test_get_backend_replay_is_default():
+    from src.model import get_backend
+    from src.model.replay import GsrReplayBackend
+
+    cfg = load_config()
+    assert cfg.sam_backend == "replay"
+    assert isinstance(get_backend(cfg), GsrReplayBackend)
