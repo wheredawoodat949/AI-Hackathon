@@ -156,3 +156,31 @@ pushed anything since this handoff.
 
 **Blocked on / open questions:** Same five as the entry above — none resolved by this entry
 alone, it's just the handoff marker.
+
+---
+
+## 2026-06-21 — basketball — Phase 4 Redis implementation (Codex)
+
+**What changed:** Replaced the Redis no-op with a disabled-by-default live-state adapter.
+Tracked positions are written to a latest-state hash and a bounded Redis Stream; the legacy
+track-embedding API now has portable hash storage and cosine search without requiring
+RediSearch. Added TTL/key-prefix/stream-size environment settings and protocol-level tests with
+an in-memory fake. Also corrected an existing bare-checkout test so the data-dependent replay
+factory skips when SoccerTrack data is absent.
+
+**Current state / what works:** Redis behavior is fully unit-tested without external services.
+The complete local suite is `21 passed, 2 skipped`; Ruff is clean. Sponsor-off mode remains a
+safe no-op. No claim is made about a hosted Redis connection because no `REDIS_URL` or local
+`redis-server` is available in Codex's environment.
+
+**How to run it right now:** Set `sponsors.redis: true`, copy `.env.example` to `.env`, set a real
+`REDIS_URL`, then call `src.store.redis_store.init(cfg)`. Publish via
+`publish_track_position(...)`/`publish_positions(...)`; dashboards read the
+`sports:tracks:basketball:latest` hash and consume `sports:tracks:basketball:stream`.
+
+**Next step for whoever picks this up:** Wire per-frame player foot positions from the
+basketball runner into `publish_positions`, then validate against a real Redis instance and
+record only observed behavior.
+
+**Blocked on / open questions:** Live validation needs `REDIS_URL`. Phase 3 still needs a GPU
+and `ROBOFLOW_API_KEY`. Phase 6–8 scope still needs user confirmation.
