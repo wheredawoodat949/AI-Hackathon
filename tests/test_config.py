@@ -24,5 +24,5 @@ def test_split_is_80_10_10_over_real_ids():
 
 def test_sponsor_flags_default_off():
     cfg = load_config()
-    for s in ("sentry", "arize", "redis", "anthropic"):
+    for s in ("sentry", "arize", "redis", "pika", "anthropic"):
         assert cfg.sponsor_enabled(s) is False

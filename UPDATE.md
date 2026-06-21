@@ -210,3 +210,36 @@ observed ID-swap rate from frame-to-frame assignments, and validate in a real Ar
 
 **Blocked on / open questions:** Hosted validation needs `ARIZE_API_KEY` and `ARIZE_SPACE_ID`.
 Phase 3 still needs GPU + Roboflow credentials. Phase 6–8 remains unconfirmed.
+
+---
+
+## 2026-06-21 — basketball — Phase 4 Pika integration (Codex)
+
+**What changed:** Added a disabled-by-default client for Pika's documented direct Developer API.
+It submits Turbo text-to-video or image-to-video jobs, polls the documented video endpoint,
+downloads completed media without forwarding the API key to the media host, and records a JSONL
+provenance manifest. Added a CLI, optional ffmpeg review-frame extraction, sponsor config/env
+plumbing, official-endpoint documentation, and fake-session tests that spend no API credits.
+
+**Current state / what works:** The request, polling, download, and manifest lifecycle is covered
+by local tests. Generated assets remain under the gitignored `synthetic/` tree. Every new manifest
+record is explicitly `synthetic: true`, `reviewed: false`, `annotated: false`, and
+`eligible_for_training: false`; Pika supplies media, not detection labels, so no generated frame
+is silently added to `data.yaml`. Full suite: 30 passed, 2 data-dependent skips; Ruff clean.
+
+**Verified external contract:** Pika's official direct docs currently specify
+`POST /generate/turbo/t2v`, `POST /generate/turbo/i2v`, `GET /videos/{video_id}`, and
+`X-API-KEY` authentication. Direct API access is partner-gated; Pika's public API page also points
+general users to fal.ai. This implementation uses only the documented direct API because the
+project requirement calls for a Pika API key.
+
+**How to run it:** Put `PIKA_API_KEY` in `.env`, set `sponsors.pika: true`, then follow
+`docs/PIKA.md`. Example: `python -m src.synthetic.pika --prompt "broadcast basketball game under
+uneven arena lighting" --extract-fps 1`.
+
+**Next step:** With a real Pika partner key, submit one bounded job, inspect the real response and
+downloaded output, then manually review/annotate any frames intended for Phase 3 augmentation.
+
+**Blocked on / open questions:** Live validation needs `PIKA_API_KEY` and direct Developer API
+access. Phase 3 still needs a GPU and `ROBOFLOW_API_KEY`. Phase 6–8 scope still needs user
+confirmation.
