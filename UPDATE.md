@@ -380,3 +380,113 @@ comparison can be added after both real reports exist.
 **Blocked on / open questions:** The remaining immediate work needs user-controlled resources:
 Roboflow + GPU for Phase 3, hosted sponsor credentials for live Phase 4 validation, and a decision
 on whether to proceed with the proposed Phase 6–8 extension.
+
+---
+
+## 2026-06-21 — basketball — Flag football demo + minimal frontend (deadline pass, Claude)
+
+**Context:** User had ~30 min left. Deferred all live Redis/Arize/Pika validation, Phase 3
+training, and Roboflow access per their explicit instruction. Priority: flag football demo
+video → frontend with both sports playable.
+
+**No frontend was found.** Searched this checkout (`frontend/` had only `.gitkeep`, no
+`package.json` anywhere in the repo) and the broader filesystem (`~/Documents`, `~/Downloads`)
+for any recently-modified frontend project — found none. Built a minimal one from scratch
+(`frontend/index.html`) since it was genuinely missing, not because the existing one (if it
+exists somewhere outside this checkout/this agent's reach) was disregarded.
+
+**Flag football — exact facts:**
+- **Input:** the file attached as `~/Downloads/Screen Recording 2026-06-21 at 11.20.28 AM.mov`
+  is misleadingly named — its actual content is real flag-football broadcast footage (USA vs
+  Italy, "The World Games", Birmingham AL), confirmed by extracting and viewing frames before
+  processing. No separate URL was provided or needed.
+- **Clip duration used:** full 8.02s source (`ffprobe`-confirmed), no trimming needed (already
+  under the suggested 10–15s window). Re-encoded: `ffmpeg -i <raw> -vf "fps=15,scale=-2:720" -an
+  -c:v libx264 -preset veryfast <clip.mp4>` → 1280x720, 15fps, 120 frames, H.264.
+  (Original source was 1280x720 @ 120fps — downsampled to 15fps so CPU inference would finish in
+  the time available; this was a deliberate quality/speed tradeoff, not a default.)
+- **Command run:** `python sports/examples/flag_football/main.py --source_video_path
+  <clip.mp4> --target_video_path <out.mp4> --device cpu --mode PLAYER_TRACKING`
+  (new file, copied from the basketball script — identical generic-COCO-detector logic, person
+  class 0 only used for this run; ball class 32 wired but not separately verified for the
+  American football's shape). Runtime: **~6 seconds** for 120 frames on CPU (no GPU on this
+  machine). `yolo11n.pt` auto-downloaded (ungated, 5.4MB).
+- **Result:** exit code 0. Output verified by extracting and viewing 4 frames spread across the
+  clip — real ellipse annotations with ByteTrack IDs correctly positioned under detected players
+  in multiple frames (not just one lucky frame). Transcoded for the frontend: `ffmpeg -i
+  <tracked.mp4> -c:v libx264 -pix_fmt yuv420p -movflags +faststart -an
+  outputs/flag_football_tracking_h264.mp4` — confirmed via `ffprobe`: `codec_name=h264,
+  width=1280, height=720, pix_fmt=yuv420p`.
+- **Ball detection:** NOT separately verified as useful for this clip — only `PLAYER_TRACKING`
+  mode was run (the explicit minimum-acceptable bar). Per instruction, did not invent ball
+  locations.
+- **TEAM_CLASSIFICATION/POSSESSION:** not run for flag football — out of scope for this pass
+  (player tracking was the stated priority; these modes are inherited from the basketball script
+  unchanged and untested here).
+
+**Basketball — exact facts:**
+- Did **not** re-run the model on `~/Downloads/download.mp4` (correctly identified as an
+  *already-annotated* output, not raw input — would have contaminated inference, per instruction).
+- Did **not** locate the original raw basketball source clip in the time available.
+- Per the explicit fallback instruction, copied `download.mp4` as-is into
+  `outputs/basketball_tracking_h264.mp4` for the frontend. **This is the existing generated
+  artifact, not a new inference run.** `ffprobe` confirms it's already `h264`/`yuv420p`/320x240
+  — no transcode needed. Documenting clearly: **this video's actual tracking quality/provenance
+  predates this session and was not evaluated here.**
+- The improved basketball pipeline (re-running `sports/examples/basketball/main.py` on a raw
+  source) was **not executed** — no raw clip located, no GPU on this machine, and time ran out.
+  This remains open (see below).
+
+**Frontend — exact facts:**
+- `frontend/index.html`: single static file, no build step, no framework. Two tab buttons
+  (🏀 Basketball / 🏈 Flag Football) switch a single native `<video controls>` element's `src`
+  between `outputs/basketball_tracking_h264.mp4` and `outputs/flag_football_tracking_h264.mp4`.
+  Native controls give play/pause/scrub/fullscreen for free — no custom JS for those. Each tab
+  shows a label clarifying what's actually playing (the basketball label explicitly says it's
+  the pre-existing artifact).
+- **Verified reachable**, not just "should work": ran `python3 -m http.server 8123` from the
+  repo root, then `curl -o /dev/null -w '%{http_code}'` against
+  `http://localhost:8123/frontend/index.html`,
+  `http://localhost:8123/outputs/basketball_tracking_h264.mp4`, and
+  `.../flag_football_tracking_h264.mp4` — **all three returned 200**. Did not load it in an
+  actual browser (no browser-automation tool available in this environment) — HTTP-level
+  verification only.
+- **Startup command:** from the repo root, `python3 -m http.server 8123`, then open
+  `http://localhost:8123/frontend/index.html` in a browser.
+
+**Sponsor integrations:** untouched — left exactly as Codex built them (disabled by default,
+code preserved, no new validation attempted), per instruction.
+
+**Tests run:** `./.venv/bin/python -m pytest -q` → exit 0, all passed except 2 skips (consistent
+with Codex's reported "data-dependent skips"). `python3 -m py_compile
+sports/examples/flag_football/main.py` → clean. Did not run `ruff` in this pass (time).
+
+**How to run it right now:**
+```bash
+# Frontend (both videos already generated and in outputs/):
+python3 -m http.server 8123   # from repo root
+# open http://localhost:8123/frontend/index.html
+
+# Re-run flag football tracking from scratch:
+ffmpeg -i <raw_flag_football.mov> -vf "fps=15,scale=-2:720" -an -c:v libx264 -preset veryfast clip.mp4
+python sports/examples/flag_football/main.py --source_video_path clip.mp4 \
+  --target_video_path tracked.mp4 --device cpu --mode PLAYER_TRACKING
+ffmpeg -i tracked.mp4 -c:v libx264 -pix_fmt yuv420p -movflags +faststart -an out_h264.mp4
+```
+
+**Next step for whoever picks this up:**
+1. Find the **original raw basketball clip** (not `download.mp4`) and re-run
+   `sports/examples/basketball/main.py` on it for a real, current basketball artifact —
+   `outputs/basketball_tracking_h264.mp4` currently holds a pre-existing artifact, not a fresh run.
+2. If a GPU becomes available, re-run flag football at full 120fps/no downsampling for a smoother
+   result, and try `TEAM_CLASSIFICATION`/`POSSESSION` modes on the flag-football clip.
+3. Load `frontend/index.html` in an actual browser (only HTTP-level reachability was verified
+   here, not visual/interactive correctness) and confirm playback, tab-switching, fullscreen.
+4. `ruff check` wasn't run this pass — worth a quick pass before the next commit.
+
+**Blocked on / open questions:**
+1. Original raw basketball source clip — not located.
+2. No GPU available in this environment — flag football ran on CPU at reduced frame rate.
+3. Frontend not visually verified in a real browser (HTTP 200s confirmed, rendering not).
+4. Phase 3 (Roboflow + GPU), Phase 4 live validation (Redis/Arize/Pika creds), Phase 6–8
+   confirmation — all still open from before, untouched this pass per instruction.
