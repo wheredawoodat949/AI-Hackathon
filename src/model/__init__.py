@@ -18,4 +18,13 @@ __all__ = [
     "SamBackend",
     "TrackResult",
     "get_backend",
+    "GsrReplayBackend",
 ]
+
+
+def __getattr__(name):  # lazy: avoid importing the loader unless replay is used
+    if name == "GsrReplayBackend":
+        from src.model.replay import GsrReplayBackend
+
+        return GsrReplayBackend
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

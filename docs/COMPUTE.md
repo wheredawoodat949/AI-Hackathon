@@ -5,6 +5,20 @@ Berkeley AI Hackathon. **Read this before burning time chasing clusters** — th
 fastest path is almost always the team GPU box or a sponsor cloud, not a
 DOE supercomputer.
 
+> ## ⚡ CONFIRMED from the hackathon Slack (2026-06-20)
+> - **The hackathon itself provides NO GPUs** and no general GPU/HuggingFace credits.
+>   (Director, `#0-ask-directors`: *"We unfortunately won't have GPUs. There will be 3 3D printers!"*)
+> - **RunPod** is a sponsor (`#spons-runpod`) → on-demand GPU cloud (A100/H100/4090). Credits are
+>   **not auto-granted** — get the promo/code at the RunPod booth or in `#spons-runpod`. **This is our
+>   primary GPU path for self-hosting SAM.**
+> - **Annapurna Labs** (AWS silicon) is a **cohost** (`#cohost-annapurna-labs`) with a track + workshop.
+>   AWS-credit availability still unanswered in Slack — **ask at their booth.** Caveat: their accelerators
+>   are Trainium/Inferentia (AWS Neuron, training-oriented) — not drop-in CUDA for SAM inference.
+> - **Anthropic** gives **~$25–50 Claude API credits/hacker** (apply with a school email; see `#spons-anthropic`).
+>   That's for the Claude API (our AI layer / a tactical-LLM feature), **not** a GPU.
+> - Net: plan on **RunPod (ask for credits) or the team GPU box**; Colab/Kaggle as free fallback. Don't
+>   count on NERSC/JGI (see §3).
+
 ---
 
 ## 1. What do we even need compute for?
@@ -45,16 +59,24 @@ python -m src.utils.gpu      # prints the device; fails loud if no CUDA
 Everything is built to run here. Use this unless you hit a memory wall on full-match
 4K, in which case drop to shorter clips or a lower-res proxy first.
 
-### B. Hackathon sponsor cloud credits (most likely "free GPU" at the event)
-The UC Berkeley AI Hackathon gives attendees compute via a **cloud sponsor**, announced
-at kickoff. Historically that was **Intel Tiber Developer Cloud** (free access incl.
-Gaudi accelerators and Data Center GPU Max), and the event site notes "some sponsors
-may provide APIs, tools, and hardware."
-- **Action at kickoff:** check the hackathon **Slack / Discord + the Devpost page** for
-  the compute sponsor and promo codes. Sign up immediately (credits are first-come).
-- Note: a Gaudi/Intel-GPU backend is not CUDA — our `sam_local` path assumes CUDA, so
-  prefer NVIDIA-backed offerings for SAM. The **hosted SAM API backend** (`sam.backend:
-  api`) sidesteps this entirely — it needs no local GPU.
+### B. RunPod — our primary GPU path (sponsor, confirmed)
+RunPod (`#spons-runpod`) is an on-demand GPU cloud: spin up an A100/H100/4090 pod in
+minutes, with NVIDIA CUDA (so `sam_local` works directly). Workflow:
+1. **Get credits** — ask at the RunPod booth or in `#spons-runpod` for the hackathon promo
+   code (not auto-granted as of 2026-06-20). Sign up at runpod.io.
+2. Launch a **GPU Pod** with a PyTorch/CUDA template (or a Jupyter template). A single
+   A100-40GB is plenty for short-clip SAM inference; H100 if you push full matches.
+3. SSH in (or use their Jupyter), then the standard bring-up in §5. Pull our repo, install,
+   run. Persist outputs to a volume or `scp` them back before the pod is torn down.
+- If credits don't come through, fall back to §C/§D, or use the **hosted SAM API backend**
+  (`sam.backend: api`) which needs no GPU of our own at all.
+
+### B2. Annapurna Labs / AWS (cohost — ask at booth)
+AWS-silicon cohost with a dedicated track. If they hand out **AWS credits**, you can launch
+a `g5`/`g6` (NVIDIA A10G/L4) or `p4`/`p5` (A100/H100) EC2 instance — standard CUDA, our
+`sam_local` runs as-is. Their *own* Trainium/Inferentia chips need the AWS Neuron SDK and a
+model port, so **don't** target those for SAM in 24h; only relevant if we pivot to an LLM
+training/inference demo on Neuron. Ask in `#cohost-annapurna-labs`.
 
 ### C. Free standby GPUs (no waiting on organizers)
 - **Google Colab** — free T4; Pro gives L4/A100. Mount the repo, `pip install -r

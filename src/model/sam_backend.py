@@ -90,6 +90,11 @@ def get_backend(cfg: Any | None = None) -> SamBackend:
         from src.model.sam_api import SamApiBackend
 
         return SamApiBackend(cfg)
+    if backend == "replay":
+        # No-GPU ground-truth replay — runs the whole pipeline on data we already have.
+        from src.model.replay import GsrReplayBackend
+
+        return GsrReplayBackend(cfg)
     raise ValueError(
-        f"Unknown sam.backend={backend!r} in config.yaml. Expected 'local' or 'api'."
+        f"Unknown sam.backend={backend!r} in config.yaml. Expected 'local', 'api', or 'replay'."
     )
