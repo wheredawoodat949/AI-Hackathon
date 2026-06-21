@@ -4,6 +4,9 @@ cv2-dependent tests importorskip cv2; data-dependent tests skip if the dev match
 isn't downloaded — so `make test` stays green on a bare machine.
 """
 
+import sys
+from types import ModuleType, SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -150,3 +153,76 @@ def test_sam_local_backend_fails_loud_without_gpu(monkeypatch):
         raise AssertionError("expected this to fail without GPU/HF access in the test sandbox")
     except (GPUNotAvailable, ImportError, RuntimeError):
         pass
+
+
+def test_sam_local_uses_one_multi_prompt_pass_and_one_based_frames(monkeypatch):
+    """Exercise the documented HF session/output shape without model weights."""
+    from src.model.sam_local import SamLocalBackend
+
+    video_utils = ModuleType("transformers.video_utils")
+    video_utils.load_video = lambda _path: (np.zeros((2, 8, 12, 3), dtype=np.uint8), {})
+    transformers = ModuleType("transformers")
+    transformers.video_utils = video_utils
+    monkeypatch.setitem(sys.modules, "transformers", transformers)
+    monkeypatch.setitem(sys.modules, "transformers.video_utils", video_utils)
+
+    class _Processor:
+        def __init__(self):
+            self.init_calls = 0
+            self.prompt_calls = []
+
+        def init_video_session(self, **kwargs):
+            self.init_calls += 1
+            assert kwargs["video"].shape == (2, 8, 12, 3)
+            return SimpleNamespace()
+
+        def add_text_prompt(self, *, inference_session, text):
+            self.prompt_calls.append(text)
+            return inference_session
+
+        @staticmethod
+        def postprocess_outputs(_session, model_outputs):
+            return model_outputs.output
+
+    outputs = [
+        {
+            "object_ids": np.array([3, 8]),
+            "scores": np.array([0.9, 0.8]),
+            "boxes": np.array([[1, 2, 5, 7], [6, 1, 10, 6]]),
+            "masks": np.ones((2, 8, 12), dtype=bool),
+            "prompt_to_obj_ids": {"soccer player": [3], "sports ball": [8]},
+        },
+        {
+            "object_ids": np.array([], dtype=int),
+            "scores": np.array([]),
+            "boxes": np.empty((0, 4)),
+            "masks": np.empty((0, 8, 12), dtype=bool),
+            "prompt_to_obj_ids": {},
+        },
+    ]
+
+    class _Model:
+        @staticmethod
+        def propagate_in_video_iterator(*, inference_session):
+            del inference_session
+            for frame_idx, output in enumerate(outputs):
+                yield SimpleNamespace(frame_idx=frame_idx, output=output)
+
+    cfg = load_config()
+    backend = SamLocalBackend(cfg)
+    backend._model = _Model()
+    backend._processor = _Processor()
+    backend._dtype = "float16"
+    prompts = ["soccer player", "sports ball"]
+
+    frames = list(backend.track("clip.mp4", prompts))
+
+    assert backend._processor.init_calls == 1
+    assert backend._processor.prompt_calls == [prompts]
+    assert [frame.frame_index for frame in frames] == [1, 2]
+    assert frames[0].width == 12 and frames[0].height == 8
+    assert [(d.instance_id, d.label, d.bbox) for d in frames[0].detections] == [
+        (3, "soccer player", (1.0, 2.0, 4.0, 5.0)),
+        (8, "sports ball", (6.0, 1.0, 4.0, 5.0)),
+    ]
+    assert frames[1].detections == ()

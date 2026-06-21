@@ -78,20 +78,21 @@ functions so `make test` stays green on any machine. Don't add them at module to
 - [x] **VERIFIED on Mac (no GPU):** `outputs/track_117093_replay.mp4` — 100 frames, 20 players + 2 keepers.
 - [x] **PRIMARY backend = YOLO (`sam.backend: yolo`, `src/model/yolo_backend.py`).** Ultralytics YOLO +
       ByteTrack: **ungated, free, weights auto-download, runs on a Colab T4 in seconds**, real boxes +
-      persistent track IDs. Chosen after SAM 3.1's gated weights + git-main-only transformers proved
-      too much friction for the deadline. **VERIFIED on Mac (CPU):** `yolo11n.pt` auto-downloaded with
+      persistent track IDs. Chosen initially after SAM's gated weights delayed the first live run.
+      **VERIFIED on Mac (CPU):** `yolo11n.pt` auto-downloaded with
       no token, detected 4 people in the test image, our `_to_frame_result` produced correct
       `Detection`s (id/label/score/bbox/foot_xy). The video `.track()` multi-frame path runs on Colab
       via `notebooks/colab_yolo_tracking.ipynb` — dead simple (GPU check → install → download clip →
       `--backend yolo` → preview), no gating/token/restart. **Next: run it on Colab for the real clip.**
       Tradeoff: YOLO returns COCO `person`/`sports ball` (no role split from the model; recover team/role
       later via jersey-color k-means, docs/ML_DIRECTIONS.md).
-- [~] **SAM 3.1 backends kept but PARKED.** `sam_local.py` (HF Transformers `Sam3VideoModel`, gated +
-      needs `transformers` from git main) and `sam_api.py` (fal.ai, needs `FAL_KEY` + payment) both
-      implemented behind the same interface — swap in via `sam.backend` if access/keys ever land. Access
-      to `facebook/sam3` was granted but the local path hit a wall (stable transformers lacks
-      `Sam3ImageProcessor`; git-main install + restart friction) so we pivoted to YOLO rather than keep
-      fighting it. `notebooks/colab_sam_tracking.ipynb` documents that path.
+- [~] **SAM local live validation resumed.** `sam_local.py` uses the released Transformers
+      `Sam3VideoModel`/`Sam3VideoProcessor` API (`transformers>=5.12.1`). It now adds all configured
+      prompts to one session/pass, labels objects through `prompt_to_obj_ids`, and converts HF's
+      zero-based frame indices to the repo's one-based contract. The Colab notebook removes stale
+      `HF_TOKEN`, trims/downscales a bounded 10-second clip before `load_video()`, and logs the full
+      console. **Next: confirm the access smoke test, run the real clip, and attach the complete
+      `outputs/sam_local_console.txt`.** `sam_api.py` remains the paid fallback.
 
 **GPU access — CONFIRMED (Slack + live.hackberkeley.org, 2026-06-20):** hackathon provides none;
 RunPod isn't even on the official sponsor-resource list (Slack-only, booth visit needed, not

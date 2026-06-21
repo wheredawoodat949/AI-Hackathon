@@ -1,8 +1,8 @@
 """YOLO + ByteTrack tracking backend (Ultralytics) — the pragmatic, ungated path.
 
 Why this exists: SAM 3.1's weights are gated on Hugging Face (slow/uncertain
-approval) and only run on bleeding-edge transformers. For a 24h deadline that's
-too much friction. Ultralytics YOLO is **ungated, free, auto-downloads its COCO
+approval) and require a heavier GPU runtime. For a 24h deadline that can be too
+much friction. Ultralytics YOLO is **ungated, free, auto-downloads its COCO
 weights, and runs on a free Colab T4 in seconds**, with built-in multi-object
 tracking (ByteTrack) that gives persistent IDs — exactly what the rest of the
 pipeline (visualize, pitch, HOTA eval) needs.
